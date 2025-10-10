@@ -21,6 +21,9 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     public $projectMembers = [];
     public $selectedProjectId;
     public $selectedMemberId;
+    public array $managers = [];
+    
+
 
     // Modals: project, phase, task, view
     public bool $showProjectModal = false;
@@ -82,19 +85,32 @@ public array $ganttTasks = []; // tasks for the Gantt chart
 
     // Mount
     public function mount()
-    {
-        $this->loadProjects();
-        $this->loadEmployees();
-    }
+{
+    $this->loadProjects();
+    $this->loadEmployees(); // load non-managers into $this->employees
+    $this->loadManagers();  // load managers into $this->managers
+}
 
-    public function loadEmployees()
+public function loadEmployees()
 {
     $this->employees = DB::table('hr_employees')
-        ->where('role', 'like', '%Manager%')
+        ->where('role', 'NOT LIKE', '%Manager%')
         ->orderBy('full_name')
         ->get()
         ->toArray();
 }
+
+public function loadManagers()
+{
+    $this->managers = DB::table('hr_employees')
+        ->where('role', 'LIKE', '%Manager%')
+        ->orderBy('full_name')
+        ->get()
+        ->toArray();
+}
+
+
+
 
 
 
@@ -879,13 +895,15 @@ private function updateProjectProgressByPhase($phase_id)
 
                     <label>Budget:<input type="number" wire:model="budget_total" min="0" step="0.01" /></label>
                     <label>Project Manager:
-                        <select wire:model="project_manager_id" required>
-                            <option value="">-- Select Manager --</option>
-                            @foreach ($employees as $emp)
-                                <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
-                            @endforeach
-                        </select>
-                    </label>
+    <select wire:model="project_manager_id" required>
+    <option value="">-- Select Manager --</option>
+    @foreach ($managers as $manager)
+        <option value="{{ $manager->employee_id }}">{{ $manager->full_name }}</option>
+    @endforeach
+</select>
+
+</label>
+
 
                     <button type="submit" class="btn btn-primary">Save Project</button>
                 </form>
@@ -1148,10 +1166,11 @@ private function updateProjectProgressByPhase($phase_id)
                 <select wire:model="selectedMemberId" class="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400">
                     <option value="">-- Select Employee --</option>
                     @foreach ($employees as $emp)
-                        @if(!collect($projectMembers)->pluck('employee_id')->contains($emp->employee_id))
-                            <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
-                        @endif
-                    @endforeach
+    @if(!collect($projectMembers)->pluck('employee_id')->contains($emp->employee_id))
+        <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
+    @endif
+@endforeach
+
                 </select>
             </label>
             <button type="submit" class="btn btn-primary">Add Member</button>
