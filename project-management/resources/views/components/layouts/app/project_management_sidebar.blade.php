@@ -4,6 +4,9 @@
     @include('partials.head')
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <title>TGIF Project Management Module</title>
+
+    
+
     <style>
         /* Reset */
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -125,6 +128,19 @@
         .modal-header { display:flex; justify-content:space-between; align-items:center; padding:1rem; background:#2e7d32; color:#fff; }
         .modal-body { padding:1rem; display:grid; gap:0.5rem; }
         .modal-footer { padding:0.75rem 1rem; background:#f7f7f7; display:flex; justify-content:flex-end; gap:0.5rem; }
+
+        #gantt {
+    width: 100%;
+    min-height: 400px;
+}
+
+.gantt-tooltip {
+    background: #fff;
+    border: 1px solid #ccc;
+    padding: 6px;
+    font-size: 13px;
+    border-radius: 4px;
+}
 
     </style>
 </head>
