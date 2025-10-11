@@ -20,6 +20,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public $editingPhase = [];
     public $showEditPhaseModal = false;
     public $phases = [];
+    public string $currentPhaseName = 'Unknown Phase';
+
+    
     
 
 public array $ganttTasks = []; // tasks for the Gantt chart
@@ -32,6 +35,7 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     public bool $showDeleteModal = false;
     public $editProject = [];
     public $deleteId = null;
+    
 
     // Modals: project, phase, task, view
     public bool $showProjectModal = false;
@@ -70,7 +74,7 @@ public array $ganttTasks = []; // tasks for the Gantt chart
 
     // Tasks
     public int $currentPhaseId = 0; // used when opening task modal / adding task
-    public int $viewTasksPhaseId = 0;
+    public ?int $viewTasksPhaseId = null;
     public array $viewTasks = [];
 
     public string $task_name = '';
@@ -78,6 +82,7 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     public string $task_start_date = '';
     public string $task_end_date = '';
     public ?int $task_dependency = null;
+    
     
     public string $task_status = 'Planned';
 
@@ -518,16 +523,18 @@ public function removeMember($employeeId)
     /*****************
      * Task CRUD (under Phase)
      *****************/
-    public function openTaskModal(int $phaseId){
+    public function openTaskModal(int $phaseId)
+{
     $this->closeViewPhasesModal();
     $this->currentPhaseId = $phaseId;
     $this->resetTaskFields();
-    
 
     // Get the phase
     $phase = DB::table('project_phases')->where('phase_id', $phaseId)->first();
+    $this->currentPhaseName = $phase->phase_name ?? 'Unknown Phase';
+
+    // Get project members for this phase's project
     if ($phase) {
-        // Get project members for this phase's project
         $project = DB::table('projects')->where('project_id', $phase->project_id)->first();
         if ($project && $project->project_member_id) {
             $memberIds = explode(',', $project->project_member_id);
@@ -543,6 +550,7 @@ public function removeMember($employeeId)
 
     $this->showTaskModal = true;
 }
+
 
     public function closeTaskModal()
     {
@@ -614,17 +622,19 @@ public function removeMember($employeeId)
 
     // Load tasks for this phase
     $this->viewTasks = DB::table('tasks')
-    ->where('phase_id', $phaseId)
-    ->get()        // returns Collection
-    ->toArray();   // convert to array
+        ->where('phase_id', $phaseId)
+        ->get()
+        ->toArray();
 
-    // Load all phases (if not already loaded)
-    if (empty($this->phases)) {
-        $this->phases = DB::table('project_phases')->get()->toArray();
-    }
+    // Load all phases
+    $this->phases = DB::table('project_phases')->get()->toArray();
 
     $this->showViewTasksModal = true;
 }
+
+
+
+
 
 
     public function closeViewTasksModal()
@@ -1164,7 +1174,13 @@ private function updateProjectProgressByPhase($phase_id)
     <div class="modal" style="display: {{ $showPhaseModal ? 'flex' : 'none' }};">
         <div class="modal-dialog">
             <div class="modal-header">
-                <div>New Phase for Project #{{ $currentProjectId }}</div>
+               <div>
+    New Phase for Project: 
+    {{ collect($this->projects)->first(fn($p) => $p->project_id == $this->currentProjectId)?->project_name ?? 'Unknown' }}
+</div>
+
+
+
                 <button type="button" wire:click="closePhaseModal" class="btn btn-warning">Close</button>
             </div>
             <div class="modal-body">
@@ -1309,7 +1325,17 @@ private function updateProjectProgressByPhase($phase_id)
     <div class="modal" style="display: {{ $showTaskModal ? 'flex' : 'none' }};">
         <div class="modal-dialog">
             <div class="modal-header">
-                <div>New Task (Phase #{{ $currentPhaseId }})</div>
+<div>
+    New Task for Phase: {{ $currentPhaseName }}
+</div>
+
+
+
+
+
+
+
+
                 <button type="button" wire:click="closeTaskModal" class="btn btn-warning">Close</button>
             </div>
             <div class="modal-body">
@@ -1506,9 +1532,6 @@ private function updateProjectProgressByPhase($phase_id)
     </div>
 
 </div>
-
-
-
 
 
 <!-- Include DHTMLX Gantt -->
