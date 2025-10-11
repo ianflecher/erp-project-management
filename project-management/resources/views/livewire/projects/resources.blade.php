@@ -328,8 +328,11 @@ public function updatedNewBudgetProjectId($projectId)
 ?>
 
 <div>
-
-
+    <!-- Resources Section -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                <h4></h4>
+                <button class="btn btn-primary" wire:click="openAddResourceModal">Add Resource</button>
+            </div>
     <!-- Projects Table -->
     <div class="data-table">
     <div class="table-header">Projects & Tasks</div>
@@ -441,11 +444,7 @@ public function updatedNewBudgetProjectId($projectId)
                 </tbody>
             </table>
 
-            <!-- Resources Section -->
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                <h4>Resources</h4>
-                <button class="btn btn-primary" wire:click="openAddResourceModal">Add Resource</button>
-            </div>
+            
 
             <!-- Resources Table -->
             <table style="width:100%; border-collapse:collapse;">
