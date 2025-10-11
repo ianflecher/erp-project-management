@@ -20,6 +20,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public $resources = [];
     public $showEditAllocationModal = false;
     public $editingAllocation = [];
+    public $showEditResourceModal = false;
+    public $editingResource;
+    
 
     public ?int $selectedProjectFilter = null; // null means show all projects
 
@@ -74,6 +77,46 @@ new #[Layout('components.layouts.app')] class extends Component
     ->toArray();
 
     }
+}
+
+    public function openEditResourceModal($resourceId)
+{
+    $resource = DB::table('resources')->where('resource_id', $resourceId)->first();
+    if ($resource) {
+        $this->editingResource = (array) $resource;
+        $this->showEditResourceModal = true;
+    }
+}
+
+public function closeEditResourceModal()
+{
+    $this->showEditResourceModal = false;
+    $this->editingResource = null; // optional, clear the editing data
+}
+
+public function updateResource()
+{
+    $validated = $this->validate([
+        'editingResource.resource_name' => 'required|string|max:255',
+        'editingResource.type' => 'required|string',
+        'editingResource.unit_cost' => 'required|numeric|min:0',
+        'editingResource.availability_quantity' => 'required|numeric|min:0',
+        'editingResource.status' => 'required|string',
+    ]);
+
+    DB::table('resources')
+        ->where('resource_id', $this->editingResource['resource_id'])
+        ->update($this->editingResource);
+
+    $this->showEditResourceModal = false;
+    $this->resources = DB::table('resources')->get(); // reload
+}
+
+// Delete resource
+public function deleteResource($resourceId)
+{
+    DB::table('resources')->where('resource_id', $resourceId)->delete();
+    $this->resources = DB::table('resources')->get(); // reload
 }
 
     public function openEditAllocationModal($allocationId)
@@ -139,12 +182,27 @@ public function updateAllocation()
 
 public function deleteAllocation($allocationId)
 {
+    // Get the allocation first
+    $allocation = DB::table('resource_allocations')
+        ->where('allocation_id', $allocationId)
+        ->first();
+
+    if (!$allocation) return;
+
+    // Add the allocated quantity back to the resource
+    DB::table('resources')
+        ->where('resource_id', $allocation->resource_id)
+        ->increment('availability_quantity', $allocation->allocated_quantity);
+
+    // Delete the allocation
     DB::table('resource_allocations')
         ->where('allocation_id', $allocationId)
         ->delete();
 
-    $this->loadTasksForAllProjects(); // reload tasks/resources
+    // Reload tasks/resources
+    $this->loadTasksForAllProjects();
 }
+
 
     public function openViewResourcesModal()
     {
@@ -234,6 +292,7 @@ public function assignMember()
 
     public function openAllocationModal($taskId)
 {
+    $this->resources = DB::table('resources')->get();
     $this->selectedTaskId = $taskId;
     $this->allocatedQuantity = 0;
     $this->selectedResourceId = null;
@@ -422,44 +481,96 @@ public function updatedNewBudgetProjectId($projectId)
     </div>
 </div>
 
-<!-- Modal -->
-    @if($showViewResourcesModal)
-        <div class="modal" aria-hidden="false">
-            <div class="modal-dialog">
-                <div class="modal-header">
-                    <h3>All Resources</h3>
-                    <button wire:click="closeViewResourcesModal" style="background:none;border:none;color:#fff;font-size:1.2rem;">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <table class="w-full border-collapse border">
-                        <thead>
-                            <tr>
-                                <th class="border px-2 py-1">Name</th>
-                                <th class="border px-2 py-1">Type</th>
-                                <th class="border px-2 py-1">Unit Cost</th>
-                                <th class="border px-2 py-1">Availability</th>
-                                <th class="border px-2 py-1">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($resources as $r)
-                                <tr>
-                                    <td class="border px-2 py-1">{{ $r->resource_name }}</td>
-                                    <td class="border px-2 py-1">{{ $r->type }}</td>
-                                    <td class="border px-2 py-1">{{ number_format($r->unit_cost, 2) }}</td>
-                                    <td class="border px-2 py-1">{{ rtrim(rtrim(number_format($r->availability_quantity, 2), '0'), '.') }}</td>
-                                    <td class="border px-2 py-1">{{ $r->status }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-warning" wire:click="closeViewResourcesModal">Close</button>
-                </div>
+@if($showViewResourcesModal)
+<div class="modal" aria-hidden="false">
+    <div class=" w-full max-w-7xl bg-white rounded-lg shadow-lg">
+        <!-- Header -->
+        <div class="modal-header flex justify-between items-center px-4 py-3 bg-green-700 text-white">
+            <h3 class="text-lg font-semibold">All Resources</h3>
+            <button wire:click="closeViewResourcesModal" 
+                    class="text-white text-2xl font-bold hover:text-gray-200">&times;</button>
+        </div>
+
+        <!-- Body -->
+        <div class="modal-body p-4">
+            <div class="overflow-x-auto">
+                <table class="w-full table-auto border border-gray-300 rounded">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="border px-3 py-2 text-left">Name</th>
+                            <th class="border px-3 py-2 text-left">Type</th>
+                            <th class="border px-3 py-2 text-right">Unit Cost</th>
+                            <th class="border px-3 py-2 text-right">Availability</th>
+                            <th class="border px-3 py-2 text-left">Status</th>
+                            <th class="border px-3 py-2 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($resources as $r)
+                        <tr class="hover:bg-gray-50 transition">
+                            <td class="border px-3 py-2">{{ $r->resource_name }}</td>
+                            <td class="border px-3 py-2">{{ $r->type }}</td>
+                            <td class="border px-3 py-2 text-right">{{ number_format($r->unit_cost, 2) }}</td>
+                            <td class="border px-3 py-2 text-right">{{ rtrim(rtrim(number_format($r->availability_quantity, 2), '0'), '.') }}</td>
+                            <td class="border px-3 py-2">{{ $r->status }}</td>
+                            <td class="border px-3 py-2 flex justify-center gap-1">
+                                <button class="btn btn-warning"
+                                        wire:click="openEditResourceModal({{ $r->resource_id }})">Edit</button>
+                                <button class="btn btn-danger   "
+                                        onclick="if(confirm('Delete this resource?')) @this.call('deleteResource', {{ $r->resource_id }})">Delete</button>
+                            </td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="6" class="text-center text-gray-400 italic py-2">No resources found</td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
             </div>
         </div>
-    @endif
+
+        <!-- Footer -->
+        <div class="modal-footer flex justify-end gap-2 px-4 py-3 bg-gray-100">
+            <button class="bg-yellow-500 text-white px-4 py-1 rounded hover:bg-yellow-600"
+                    wire:click="closeViewResourcesModal">Close</button>
+        </div>
+    </div>
+</div>
+@endif
+
+@if($showEditResourceModal)
+<div class="modal" aria-hidden="false">
+    <div class="modal-dialog w-full max-w-md bg-white rounded-lg shadow-lg">
+        <div class="modal-header flex justify-between items-center px-4 py-3 bg-yellow-600 text-white">
+            <h3>Edit Resource</h3>
+            <button wire:click="$set('showEditResourceModal', false)" class="text-2xl">&times;</button>
+        </div>
+        <div class="modal-body p-4 space-y-2">
+            <label>Name
+                <input type="text" wire:model="editingResource.resource_name" class="w-full border rounded px-2 py-1">
+            </label>
+            <label>Type
+                <input type="text" wire:model="editingResource.type" class="w-full border rounded px-2 py-1">
+            </label>
+            <label>Unit Cost
+                <input type="number" min="0" step="0.01" wire:model="editingResource.unit_cost" class="w-full border rounded px-2 py-1">
+            </label>
+            <label>Availability
+                <input type="number" min="0" step="0.01" wire:model="editingResource.availability_quantity" class="w-full border rounded px-2 py-1">
+            </label>
+            <label>Status
+                <input type="text" wire:model="editingResource.status" class="w-full border rounded px-2 py-1">
+            </label>
+        </div>
+        <div class="modal-footer flex justify-end gap-2 px-4 py-3 bg-gray-100">
+            <button class="btn btn-secondary px-4 py-1 rounded" wire:click="$set('showEditResourceModal', false)">Cancel</button>
+            <button class="btn btn-primary px-4 py-1 rounded" wire:click="updateResource">Save</button>
+        </div>
+    </div>
+</div>
+@endif
+
 
 
    @if($showEditAllocationModal)

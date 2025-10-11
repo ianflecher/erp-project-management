@@ -19,6 +19,8 @@ new #[Layout('components.layouts.app')] class extends Component
     public $newMemberName = null;
     public $editingPhase = [];
     public $showEditPhaseModal = false;
+    public $phases = [];
+    
 
 public array $ganttTasks = []; // tasks for the Gantt chart
 
@@ -196,15 +198,19 @@ public function updateProject()
     DB::table('projects')
         ->where('project_id', $this->editProject['project_id'])
         ->update([
-            'project_name' => $this->editProject['project_name'] ?? '',
-            'description' => $this->editProject['description'] ?? '',
-            'budget_total' => $this->editProject['budget_total'] ?? 0,
-            'updated_at' => now(),
+            'project_name'         => $this->editProject['project_name'] ?? '',
+            'description'          => $this->editProject['description'] ?? '',
+            'budget_total'         => $this->editProject['budget_total'] ?? 0,
+            'project_manager_id'   => $this->editProject['project_manager_id'] ?? null,
+            'start_date'           => $this->editProject['start_date'] ?? null,
+            'end_date'             => $this->editProject['end_date'] ?? null,
+            'updated_at'           => now(),
         ]);
 
     $this->closeEditModal();
     $this->loadProjects(); // refresh the table
 }
+
 
 public function confirmDelete($projectId)
 {
@@ -602,18 +608,24 @@ public function removeMember($employeeId)
         $this->task_status = 'Planned';
     }
 
-    public function openViewTasksModal(int $phaseId)
-    {
-        $this->viewTasksPhaseId = $phaseId;
+    public function openViewTasksModal($phaseId)
+{
+    $this->viewTasksPhaseId = $phaseId;
 
-        $this->viewTasks = DB::table('tasks')
-            ->where('phase_id', $phaseId)
-            ->orderBy('start_date', 'asc')
-            ->get()
-            ->toArray();
+    // Load tasks for this phase
+    $this->viewTasks = DB::table('tasks')
+    ->where('phase_id', $phaseId)
+    ->get()        // returns Collection
+    ->toArray();   // convert to array
 
-        $this->showViewTasksModal = true;
+    // Load all phases (if not already loaded)
+    if (empty($this->phases)) {
+        $this->phases = DB::table('project_phases')->get()->toArray();
     }
+
+    $this->showViewTasksModal = true;
+}
+
 
     public function closeViewTasksModal()
     {
@@ -959,6 +971,29 @@ private function updateProjectProgressByPhase($phase_id)
                     <span class="font-medium text-gray-700">Budget</span>
                     <input type="number" wire:model="editProject.budget_total" class="w-full border rounded p-2 mt-1">
                 </label>
+
+                {{-- Project Manager Dropdown --}}
+                <label>
+                    <span class="font-medium text-gray-700">Project Manager</span>
+                    <select wire:model="editProject.project_manager_id" class="w-full border rounded p-2 mt-1">
+                        <option value="">-- Select Manager --</option>
+                        @foreach($managers as $manager)
+                            <option value="{{ $manager->employee_id }}">{{ $manager->full_name }}</option>
+                        @endforeach
+                    </select>
+                </label>
+
+                {{-- Start Date --}}
+                <label>
+                    <span class="font-medium text-gray-700">Start Date</span>
+                    <input type="date" wire:model="editProject.start_date" class="w-full border rounded p-2 mt-1">
+                </label>
+
+                {{-- End Date --}}
+                <label>
+                    <span class="font-medium text-gray-700">End Date</span>
+                    <input type="date" wire:model="editProject.end_date" class="w-full border rounded p-2 mt-1">
+                </label>
             </div>
             <div class="modal-footer">
                 <button wire:click="closeEditModal" class="btn btn-secondary">Cancel</button>
@@ -967,6 +1002,8 @@ private function updateProjectProgressByPhase($phase_id)
         </div>
     </div>
 @endif
+
+
 
 {{-- ✅ Delete Confirmation Modal --}}
 @if ($showDeleteModal)
@@ -1296,10 +1333,24 @@ private function updateProjectProgressByPhase($phase_id)
     <div class="modal" style="display: {{ $showViewTasksModal ? 'flex' : 'none' }};">
         <div class="modal-dialog">
             <div class="modal-header">
-                <div>
-    Tasks for Phase: 
-    {{ collect($phases ?? [])->first(fn($ph) => $ph->phase_id == $viewTasksPhaseId)?->phase_name ?? 'Unknown Phase' }}
+                
+               @php
+    $phaseName = 'Unknown Phase';
+    if (!empty($phases) && $viewTasksPhaseId) {
+        foreach ($phases as $ph) {
+            if ($ph->phase_id == $viewTasksPhaseId) {
+                $phaseName = $ph->phase_name;
+                break;
+            }
+        }
+    }
+@endphp
+
+<div>
+    
+    Tasks for Phase: {{ $phaseName }}
 </div>
+
                 <button type="button" wire:click="closeViewTasksModal" class="btn btn-warning">Close</button>
             </div>
             <div style="overflow-x:auto;">
