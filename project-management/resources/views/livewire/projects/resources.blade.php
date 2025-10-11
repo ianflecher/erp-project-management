@@ -14,6 +14,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public bool $showBudgetModal = false;
     public bool $showAddBudgetModal = false;
     public bool $showAddResourceModal = false;
+    public bool $showAssignMemberModal = false;
+    public ?int $currentTaskId = null;
+
+    public ?int $selectedProjectFilter = null; // null means show all projects
+
+
+    public ?int $task_assigned_to = null;
+    public ?int $editTaskAssignedTo = null;
 
     public ?int $newBudgetProjectId = null;
     public ?int $newBudgetPhaseId = null;
@@ -28,6 +36,10 @@ new #[Layout('components.layouts.app')] class extends Component
     public array $employees = [];
     public array $resources = [];
     public array $budgets = [];
+    public ?int $currentProjectId = null;
+    public array $projectMembers = [];
+
+
 
     // Allocation Modal
     public bool $showAllocationModal = false;
@@ -40,13 +52,91 @@ new #[Layout('components.layouts.app')] class extends Component
     public ?string $errorMessage = null;
 
     public function mount()
-    {
-        $this->loadProjects();
-        $this->loadEmployees();
-        $this->loadResources();
-        $this->loadTasksForAllProjects();
-        $this->loadBudgets();
+{
+    $this->loadProjects();       // loads $this->projects as array
+    $this->loadEmployees();
+    $this->loadResources();
+    $this->loadTasksForAllProjects();
+    $this->loadBudgets();
+
+    // Loop through projects to get their members
+    foreach ($this->projects as $p) {
+        $memberIds = explode(',', $p->project_member_id ?? ''); // array of IDs
+
+        $this->projectMembers[$p->project_id] = DB::table('hr_employees')
+    ->whereIn('employee_id', $memberIds)
+    ->select('employee_id', 'full_name')
+    ->get()
+    ->toArray();
+
     }
+}
+
+public function getFilteredProjectsProperty()
+{
+    $filter = (int) $this->selectedProjectFilter;
+    if ($filter > 0) {
+        return collect($this->projects)
+            ->where('project_id', $filter)
+            ->all();
+    }
+    return $this->projects;
+}
+
+
+
+
+    public function openAssignMemberModal(int $taskId, int $projectId)
+{
+    $this->currentTaskId = $taskId;
+    $this->currentProjectId = $projectId;
+    $this->selectedEmployeeId = null;
+
+    // Get the project
+    $project = collect($this->projects)->first(fn($p) => $p->project_id == $projectId);
+
+    // Get member IDs as array
+    $memberIds = explode(',', $project->project_member_id ?? '');
+
+    // Fetch members from hr_employees table
+    $this->projectMembers[$projectId] = DB::table('hr_employees')
+        ->whereIn('employee_id', $memberIds)
+        ->select('employee_id', 'full_name')
+        ->get()
+        ->toArray();
+
+    $this->showAssignMemberModal = true;
+}
+
+public function assignMember()
+{
+    if ($this->currentTaskId && $this->selectedEmployeeId) {
+        // Update DB
+        DB::table('tasks')
+            ->where('task_id', $this->currentTaskId)
+            ->update(['assigned_to' => $this->selectedEmployeeId]);
+
+        // Close modal
+        $this->showAssignMemberModal = false;
+
+        // Reload tasks for all projects (or just current project)
+        $this->loadTasksForAllProjects();
+
+        // Optionally reset selected employee
+        $this->selectedEmployeeId = null;
+        $this->currentTaskId = null;
+    }
+}
+
+
+
+
+
+
+
+
+
+
 
     public function getActualCostForPhase($phaseId)
 {
@@ -98,9 +188,6 @@ public function saveAllocation()
     $this->allocatedQuantity = 0;
     $this->showAllocationModal = false;
 }
-
-
-
 
     public function loadPhasesForProject($projectId)
 {
@@ -210,19 +297,23 @@ public function updatedNewBudgetProjectId($projectId)
             ->toArray();
     }
 
+
     public function loadTasksForAllProjects()
-    {
-        $this->projectTasks = [];
-        foreach ($this->projects as $project) {
-            $tasks = DB::table('tasks as t')
-                ->join('project_phases as p', 't.phase_id', '=', 'p.phase_id')
-                ->where('p.project_id', $project->project_id)
-                ->select('t.*', 'p.phase_name')
-                ->get()
-                ->toArray();
-            $this->projectTasks[$project->project_id] = $tasks;
-        }
+{
+    $this->projectTasks = []; // reset
+
+    foreach ($this->projects as $p) {
+        $tasks = DB::table('tasks as t')
+            ->join('project_phases as ph', 't.phase_id', '=', 'ph.phase_id')
+            ->where('ph.project_id', $p->project_id)
+            ->select('t.*', 'ph.phase_name')
+            ->orderBy('t.task_id') // optional ordering
+            ->get()
+            ->toArray(); // convert collection to array
+
+        $this->projectTasks[$p->project_id] = $tasks;
     }
+}
 
     public function loadEmployees()
     {
@@ -237,91 +328,79 @@ public function updatedNewBudgetProjectId($projectId)
 ?>
 
 <div>
-    <!-- Dashboard Cards -->
-    <div class="dashboard-cards">
-        <div class="card">
-            <div class="card-title">Total Projects</div>
-            <div class="card-value">{{ count($projects) }}</div>
-        </div>
-        <div class="card">
-    <div class="card-title">Total Budget</div>
-    <div class="card-value">
-        {{ number_format(array_sum(array_map(fn($b) => $b->estimated_cost, $budgets ?? [])), 2) }}
-    </div>
-</div>
 
-        <div class="card">
-            <div class="card-title">Total Employees</div>
-            <div class="card-value">{{ count($employees) }}</div>
-        </div>
-        <div class="card">
-            <div class="card-title">Types of Resources</div>
-            <div class="card-value">{{ count($resources) }}</div>
-        </div>
-    </div>
-
-    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin:1rem 0;">
-        <button class="btn btn-success" wire:click="openBudgetModal">View Budget & Resources</button>
-    </div>
 
     <!-- Projects Table -->
     <div class="data-table">
-        <div class="table-header">Projects & Tasks</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Project</th>
-                    <th>Phase</th>
-                    <th>Task</th>
-                    <th>Assigned Employee</th>
-                    <th>Resources</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($projects as $p)
-                    @foreach($projectTasks[$p->project_id] ?? [] as $t)
-                        <tr>
-                            <td>{{ $p->project_name }}</td>
-                            <td>{{ $t->phase_name }}</td>
-                            <td>{{ $t->task_name }}</td>
-                            <td>
-                                @php
-                                    $emp = collect($employees)->first(fn($e)=>$e->employee_id==$t->assigned_to);
-                                @endphp
-                                {{ $emp->full_name ?? 'Unassigned' }}
-                            </td>
-                            <td>
+    <div class="table-header">Projects & Tasks</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Project</th>
+                <th>Phase</th>
+                <th>Task</th>
+                <th>Assigned Employee</th>
+                <th>Resources</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+      <tbody>
+@foreach($this->filteredProjects as $p)
     @php
-        $allocs = DB::table('resource_allocations')
-            ->join('resources', 'resources.resource_id', '=', 'resource_allocations.resource_id')
-            ->where('resource_allocations.task_id', $t->task_id)
-            ->select('resources.resource_name', 'resources.type', 'resource_allocations.allocated_quantity')
-            ->get();
+        $tasks = $projectTasks[$p->project_id] ?? [];
     @endphp
 
-    @foreach($allocs as $a)
-        @php
-            // Determine unit based on type
-            $unit = match($a->type) {
-                'Food' => 'kg',
-                'Equipment' => 'pcs',
-                default => 'pcs',
-            };
-        @endphp
-        {{ $a->resource_name }} {{ rtrim(rtrim(number_format($a->allocated_quantity, 2), '0'), '.') }} {{ $unit }}<br>
-    @endforeach
-</td>
+    @if(count($tasks) > 0)
+        @foreach($tasks as $t)
+            <tr>
+                <td>{{ $p->project_name }}</td>
+                <td>{{ $t->phase_name }}</td>
+                <td>{{ $t->task_name }}</td>
+                <td>
+                    @php
+                        $emp = collect($employees)->first(fn($e) => $e->employee_id == $t->assigned_to);
+                    @endphp
+                    {{ $emp->full_name ?? 'Unassigned' }}
+                </td>
+                <td>
+                    @php
+                        $allocs = DB::table('resource_allocations')
+                            ->join('resources', 'resources.resource_id', '=', 'resource_allocations.resource_id')
+                            ->where('resource_allocations.task_id', $t->task_id)
+                            ->select('resources.resource_name', 'resources.type', 'resource_allocations.allocated_quantity')
+                            ->get();
+                    @endphp
 
-                            <td>
-                                <button class="btn btn-success" wire:click="openAllocationModal({{ $t->task_id }})">Allocate</button>
-                            </td>
-                        </tr>
+                    @foreach($allocs as $a)
+                        @php
+                            $unit = match($a->type) {
+                                'Food' => 'kg',
+                                'Equipment' => 'pcs',
+                                default => 'pcs',
+                            };
+                        @endphp
+                        {{ $a->resource_name }} {{ rtrim(rtrim(number_format($a->allocated_quantity, 2), '0'), '.') }} {{ $unit }}<br>
                     @endforeach
-                @endforeach
-            </tbody>
-        </table>
-    </div>
+                </td>
+                <td class="flex gap-2">
+                    <button class="btn btn-success" wire:click="openAllocationModal({{ $t->task_id }})">Allocate</button>
+                    <button class="btn btn-primary" wire:click="openAssignMemberModal({{ $t->task_id }}, {{ $p->project_id }})">Assign Member</button>
+                </td>
+            </tr>
+        @endforeach
+    @else
+        <tr>
+            <td>{{ $p->project_name }}</td>
+            <td colspan="5" class="text-center">No tasks yet</td>
+        </tr>
+    @endif
+@endforeach
+</tbody>
+
+
+    </table>
+</div>
+
 
    <!-- Main Budget & Resource Management Modal -->
 <div class="modal" aria-hidden="{{ $showBudgetModal ? 'false' : 'true' }}">
@@ -485,7 +564,7 @@ public function updatedNewBudgetProjectId($projectId)
     <div class="modal-dialog">
         <div class="modal-header">
             Allocate Resource
-            <button class="btn btn-warning" wire:click="closeAllocationModal">Close</button>
+            <button class="btn btn-warning" class="btn btn-warning"wire:click="closeAllocationModal">Close</button>
         </div>
         <div class="modal-body">
             <label>Resource:
@@ -508,6 +587,39 @@ public function updatedNewBudgetProjectId($projectId)
         </div>
     </div>
 </div>
+
+<div class="modal" style="display: {{ $showAssignMemberModal ? 'flex' : 'none' }};">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3>Assign Member</h3>
+            <button class="btn btn-warning" wire:click="$set('showAssignMemberModal', false)">Close</button>
+        </div>
+        <div class="modal-body">
+            @php
+$assignedIds = collect($projectTasks[$currentProjectId] ?? [])
+    ->pluck('assigned_to')
+    ->filter() // remove nulls
+    ->all();
+@endphp
+
+<select wire:model="selectedEmployeeId">
+    <option value="">-- Select Member --</option>
+    @foreach($projectMembers[$currentProjectId] ?? [] as $member)
+        @if(!in_array($member->employee_id, $assignedIds))
+            <option value="{{ $member->employee_id }}">{{ $member->full_name }}</option>
+        @endif
+    @endforeach
+</select>
+
+
+
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" wire:click="assignMember">Assign</button>
+        </div>
+    </div>
+</div>
+
 
 
 </div>

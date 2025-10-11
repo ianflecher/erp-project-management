@@ -68,7 +68,7 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     public string $task_start_date = '';
     public string $task_end_date = '';
     public ?int $task_dependency = null;
-    public ?int $task_assigned_to = null;
+    
     public string $task_status = 'Planned';
 
     // Edit task
@@ -79,7 +79,7 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     public string $editTaskStatus = 'Planned';
     public float $editTaskProgress = 0.0;
     public ?int $editTaskDependency = null;
-    public ?int $editTaskAssignedTo = null;
+    
     public ?string $editTaskDescription = null;
    public $ganttProjectId;
 
@@ -401,7 +401,7 @@ public function removeMember($employeeId)
             'start_date' => $this->task_start_date,
             'end_date' => $this->task_end_date,
             'dependency_task_id' => $this->task_dependency,
-            'assigned_to' => $this->task_assigned_to,
+            'assigned_to' => null,
             'status' => 'Planned',
             'progress_percentage' => 0,
             'created_at' => now(),
@@ -464,7 +464,7 @@ public function removeMember($employeeId)
     $this->editTaskStatus = $task->status;
     $this->editTaskProgress = (float) $task->progress_percentage;
     $this->editTaskDependency = $task->dependency_task_id;
-    $this->editTaskAssignedTo = $task->assigned_to;
+    $this->editTaskAssignedTo = null;
     $this->editTaskDescription = $task->description;
 
     // Load project members for this task's phase
@@ -541,7 +541,7 @@ public function removeMember($employeeId)
             'status' => $this->editTaskStatus,
             'progress_percentage' => $progress,
             'dependency_task_id' => $this->editTaskDependency,
-            'assigned_to' => $this->editTaskAssignedTo,
+            'assigned_to' => null,
             'updated_at' => now(),
         ]);
 
@@ -774,6 +774,7 @@ private function updateProjectProgressByPhase($phase_id)
     <button type="button" wire:click="openProjectModal" class="btn btn-primary" style="margin-bottom:1rem;">+ Add Project</button>
 
     <!-- Projects Table -->
+    <div class="table-header">Projects</div>
    <table>
     <thead>
         <tr>
@@ -937,7 +938,11 @@ private function updateProjectProgressByPhase($phase_id)
     <div class="modal" style="display: {{ $showViewPhasesModal ? 'flex' : 'none' }}; align-items:center; justify-content:center; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000;">
     <div class="modal-dialog" style="background:#fff; border-radius:8px; width:90%; max-width:700px; overflow:hidden;">
         <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:1rem; border-bottom:1px solid #ddd;">
-            <div>Phases for Project #{{ $viewPhasesProjectId }}</div>
+            <div>
+    Phases for Project: 
+    {{ collect($projects)->first(fn($p) => $p->project_id == $viewPhasesProjectId)?->project_name ?? 'Unknown Project' }}
+</div>
+
             <button type="button" wire:click="closeViewPhasesModal" style="background:#28a745; color:#fff; border:none; padding:0.4rem 0.8rem; border-radius:4px; cursor:pointer;">Close</button>
         </div>
 
@@ -1008,16 +1013,7 @@ private function updateProjectProgressByPhase($phase_id)
                     <label>End Date:<input type="date" wire:model="task_end_date" required /></label>
                     <label>Description:<input type="text" wire:model="task_description" /></label>
                     <label>Dependency Task ID:<input type="number" wire:model="task_dependency" min="1" /></label>
-                    <label>Assign To:
-                            
-                        </select><select wire:model="task_assigned_to">
-    <option value="">-- Select Member --</option>
-    @foreach ($phaseMembers as $member)
-        <option value="{{ $member->employee_id }}">{{ $member->full_name }}</option>
-    @endforeach
-</select>
-
-                    </label>
+                    
                     <button type="submit" class="btn btn-primary">Save Task</button>
                 </form>
             </div>
@@ -1028,7 +1024,10 @@ private function updateProjectProgressByPhase($phase_id)
     <div class="modal" style="display: {{ $showViewTasksModal ? 'flex' : 'none' }};">
         <div class="modal-dialog">
             <div class="modal-header">
-                <div>Tasks for Phase #{{ $viewTasksPhaseId }}</div>
+                <div>
+    Tasks for Phase: 
+    {{ collect($phases ?? [])->first(fn($ph) => $ph->phase_id == $viewTasksPhaseId)?->phase_name ?? 'Unknown Phase' }}
+</div>
                 <button type="button" wire:click="closeViewTasksModal" class="btn btn-warning">Close</button>
             </div>
             <div class="modal-body">
@@ -1097,15 +1096,7 @@ private function updateProjectProgressByPhase($phase_id)
                         </select>
                     </label>
                     <label>Dependency Task ID: <input type="number" wire:model="editTaskDependency" min="1" /></label>
-                    <label>Assign To:
-                        <select wire:model="editTaskAssignedTo">
-    <option value="">-- Select Member --</option>
-    @foreach ($phaseMembers as $member)
-        <option value="{{ $member->employee_id }}">{{ $member->full_name }}</option>
-    @endforeach
-</select>
-
-                    </label>
+                    
                     <label>Description: <input type="text" wire:model="editTaskDescription" /></label>
                     <button type="submit" class="btn btn-primary">Update Task</button>
                 </form>
@@ -1185,22 +1176,25 @@ private function updateProjectProgressByPhase($phase_id)
 <link rel="stylesheet" href="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.css">
 <script>
     function loadGantt(projectId) {
-    console.log("Loading Gantt for project:", projectId);
-
     fetch(`/gantt-tasks/${projectId}`)
         .then(res => res.json())
-        .then(tasks => {
+        .then(data => {
+            // Optional: calculate duration for tasks if needed
             const ganttData = {
-                data: tasks.map(t => ({
+                data: data.map(t => ({
                     ...t,
-                    duration: Math.ceil((new Date(t.end_date) - new Date(t.start_date)) / (1000*60*60*24)) + 1
+                    duration: t.end_date && t.start_date ? 
+                        Math.ceil((new Date(t.end_date) - new Date(t.start_date)) / (1000*60*60*24)) + 1 
+                        : 0
                 }))
             };
 
             gantt.init("gantt_here");
             gantt.parse(ganttData);
         })
-        .catch(err => console.error("Error fetching Gantt tasks:", err));
+        .catch(err => console.error("Error fetching Gantt data:", err));
 }
+
+
 
 </script>
