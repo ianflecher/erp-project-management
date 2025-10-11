@@ -103,7 +103,7 @@ public function loadEmployees()
 public function loadManagers()
 {
     $this->managers = DB::table('hr_employees')
-        ->where('role', 'LIKE', '%Manager%')
+        ->where('role', 'NOT LIKE', '%Manager%')
         ->orderBy('full_name')
         ->get()
         ->toArray();
