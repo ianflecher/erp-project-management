@@ -16,6 +16,10 @@ new #[Layout('components.layouts.app')] class extends Component
     public bool $showAddResourceModal = false;
     public bool $showAssignMemberModal = false;
     public ?int $currentTaskId = null;
+    public $showViewResourcesModal = false;
+    public $resources = [];
+    public $showEditAllocationModal = false;
+    public $editingAllocation = [];
 
     public ?int $selectedProjectFilter = null; // null means show all projects
 
@@ -34,7 +38,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
     // Employees & Resources
     public array $employees = [];
-    public array $resources = [];
+    
     public array $budgets = [];
     public ?int $currentProjectId = null;
     public array $projectMembers = [];
@@ -71,6 +75,92 @@ new #[Layout('components.layouts.app')] class extends Component
 
     }
 }
+
+    public function openEditAllocationModal($allocationId)
+{
+    $allocation = DB::table('resource_allocations')
+        ->where('allocation_id', $allocationId)
+        ->first();
+
+    if ($allocation) {
+        $this->editingAllocation = (array) $allocation;
+        $this->showEditAllocationModal = true;
+    }
+}
+
+public function updateAllocation()
+{
+    $allocation = DB::table('resource_allocations')
+        ->where('allocation_id', $this->editingAllocation['allocation_id'])
+        ->first();
+
+    if (!$allocation) return;
+
+    $resource = DB::table('resources')
+        ->where('resource_id', $allocation->resource_id)
+        ->first();
+
+    $oldQty = $allocation->allocated_quantity;
+    $newQty = $this->editingAllocation['allocated_quantity'];
+
+    $diff = $newQty - $oldQty;
+
+    if ($diff > $resource->availability_quantity) {
+    $this->addError('editingAllocation.allocated_quantity', "Stocks We Have   ({$resource->availability_quantity})");
+
+    // Dispatch browser event to auto-clear error
+    $this->dispatchBrowserEvent('clear-allocation-error', ['field' => 'editingAllocation.allocated_quantity']);
+    return;
+}
+
+
+    // Update allocation
+    DB::table('resource_allocations')
+        ->where('allocation_id', $allocation->allocation_id)
+        ->update([
+            'allocated_quantity' => $newQty,
+            'updated_at' => now(),
+        ]);
+
+    // Update resource availability
+    DB::table('resources')
+        ->where('resource_id', $resource->resource_id)
+        ->update([
+            'availability_quantity' => $resource->availability_quantity - $diff,
+        ]);
+
+    $this->showEditAllocationModal = false;
+    $this->editingAllocation = [];
+    $this->resetValidation(); // Clear error
+    $this->loadTasksForAllProjects();
+}
+
+
+
+public function deleteAllocation($allocationId)
+{
+    DB::table('resource_allocations')
+        ->where('allocation_id', $allocationId)
+        ->delete();
+
+    $this->loadTasksForAllProjects(); // reload tasks/resources
+}
+
+    public function openViewResourcesModal()
+    {
+        // Fetch resources from DB (adjust query as needed)
+        $this->resources = DB::table('resources')->get();
+
+        // Show modal
+        $this->showViewResourcesModal = true;
+    }
+
+    public function closeViewResourcesModal()
+    {
+        $this->showViewResourcesModal = false;
+        $this->resources = [];
+    }
+
 
 public function getFilteredProjectsProperty()
 {
@@ -111,31 +201,26 @@ public function getFilteredProjectsProperty()
 public function assignMember()
 {
     if ($this->currentTaskId && $this->selectedEmployeeId) {
-        // Update DB
-        DB::table('tasks')
-            ->where('task_id', $this->currentTaskId)
-            ->update(['assigned_to' => $this->selectedEmployeeId]);
+        $task = DB::table('tasks')->where('task_id', $this->currentTaskId)->first();
 
-        // Close modal
+        if ($task) {
+            $assignedIds = $task->assigned_to ? explode(',', $task->assigned_to) : [];
+
+            if (!in_array($this->selectedEmployeeId, $assignedIds)) {
+                $assignedIds[] = $this->selectedEmployeeId;
+
+                DB::table('tasks')
+                    ->where('task_id', $this->currentTaskId)
+                    ->update(['assigned_to' => implode(',', $assignedIds)]);
+            }
+        }
+
         $this->showAssignMemberModal = false;
-
-        // Reload tasks for all projects (or just current project)
         $this->loadTasksForAllProjects();
-
-        // Optionally reset selected employee
         $this->selectedEmployeeId = null;
         $this->currentTaskId = null;
     }
 }
-
-
-
-
-
-
-
-
-
 
 
     public function getActualCostForPhase($phaseId)
@@ -330,9 +415,96 @@ public function updatedNewBudgetProjectId($projectId)
 <div>
     <!-- Resources Section -->
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                <h4></h4>
-                <button class="btn btn-primary" wire:click="openAddResourceModal">Add Resource</button>
+    <h4></h4>
+    <div class="flex gap-2">
+        <button class="btn btn-primary" wire:click="openAddResourceModal">Add Resource</button>
+        <button class="btn btn-primary" wire:click="openViewResourcesModal">View Resources</button>
+    </div>
+</div>
+
+<!-- Modal -->
+    @if($showViewResourcesModal)
+        <div class="modal" aria-hidden="false">
+            <div class="modal-dialog">
+                <div class="modal-header">
+                    <h3>All Resources</h3>
+                    <button wire:click="closeViewResourcesModal" style="background:none;border:none;color:#fff;font-size:1.2rem;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <table class="w-full border-collapse border">
+                        <thead>
+                            <tr>
+                                <th class="border px-2 py-1">Name</th>
+                                <th class="border px-2 py-1">Type</th>
+                                <th class="border px-2 py-1">Unit Cost</th>
+                                <th class="border px-2 py-1">Availability</th>
+                                <th class="border px-2 py-1">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($resources as $r)
+                                <tr>
+                                    <td class="border px-2 py-1">{{ $r->resource_name }}</td>
+                                    <td class="border px-2 py-1">{{ $r->type }}</td>
+                                    <td class="border px-2 py-1">{{ number_format($r->unit_cost, 2) }}</td>
+                                    <td class="border px-2 py-1">{{ rtrim(rtrim(number_format($r->availability_quantity, 2), '0'), '.') }}</td>
+                                    <td class="border px-2 py-1">{{ $r->status }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-warning" wire:click="closeViewResourcesModal">Close</button>
+                </div>
             </div>
+        </div>
+    @endif
+
+
+   @if($showEditAllocationModal)
+    <div class="modal" aria-hidden="false">
+        <div class="modal-dialog">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h3>Edit Resource Allocation</h3>
+                <button wire:click="$set('showEditAllocationModal', false)" 
+                        style="background:none;border:none;color:#fff;font-size:1.2rem;">
+                    &times;
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body">
+
+                <div x-data 
+     x-on:clear-allocation-error.window="
+         const field = $event.detail.field;
+         setTimeout(() => {
+             @this.setError(field, null);
+         }, 3000);
+     ">
+    <label for="allocatedQuantity">Allocated Quantity</label>
+    <input id="allocatedQuantity" type="number" min="0" step="0.01" 
+           wire:model="editingAllocation.allocated_quantity" 
+           class="w-full border px-2 py-1 rounded">
+
+    @error('editingAllocation.allocated_quantity')
+        <p class="text-red-500 text-sm mt-1">{{ $message }}</p>
+    @enderror
+</div>
+
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <button class="btn btn-secondary" wire:click="$set('showEditAllocationModal', false)">Cancel</button>
+                <button class="btn btn-primary" wire:click="updateAllocation">Save</button>
+            </div>
+        </div>
+    </div>
+@endif
+
     <!-- Projects Table -->
     <div class="data-table">
     <div class="table-header">Projects & Tasks</div>
@@ -360,35 +532,82 @@ public function updatedNewBudgetProjectId($projectId)
                 <td>{{ $t->phase_name }}</td>
                 <td>{{ $t->task_name }}</td>
                 <td>
-                    @php
-                        $emp = collect($employees)->first(fn($e) => $e->employee_id == $t->assigned_to);
-                    @endphp
-                    {{ $emp->full_name ?? 'Unassigned' }}
-                </td>
-                <td>
-                    @php
-                        $allocs = DB::table('resource_allocations')
-                            ->join('resources', 'resources.resource_id', '=', 'resource_allocations.resource_id')
-                            ->where('resource_allocations.task_id', $t->task_id)
-                            ->select('resources.resource_name', 'resources.type', 'resource_allocations.allocated_quantity')
-                            ->get();
-                    @endphp
+@php
+    $assignedIds = explode(',', $t->assigned_to ?? '');
+    $assignedEmployees = collect($employees)
+        ->whereIn('employee_id', $assignedIds)
+        ->pluck('full_name')
+        ->toArray();
+@endphp
 
-                    @foreach($allocs as $a)
-                        @php
-                            $unit = match($a->type) {
-                                'Food' => 'kg',
-                                'Equipment' => 'pcs',
-                                default => 'pcs',
-                            };
-                        @endphp
-                        {{ $a->resource_name }} {{ rtrim(rtrim(number_format($a->allocated_quantity, 2), '0'), '.') }} {{ $unit }}<br>
-                    @endforeach
-                </td>
+@if(count($assignedEmployees) > 0)
+    {{ implode(', ', $assignedEmployees) }}
+@else
+    Unassigned
+@endif
+</td>
+
+              <td>
+    @php
+        $allocs = DB::table('resource_allocations')
+            ->join('resources', 'resources.resource_id', '=', 'resource_allocations.resource_id')
+            ->where('resource_allocations.task_id', $t->task_id)
+            ->select(
+                'resource_allocations.allocation_id',
+                'resources.resource_name',
+                'resources.type',
+                'resource_allocations.allocated_quantity'
+            )
+            ->get();
+    @endphp
+
+    @foreach($allocs as $a)
+        @php
+            $unit = match($a->type) {
+                'Food' => 'kg',
+                'Equipment' => 'pcs',
+                default => 'pcs',
+            };
+        @endphp
+
+        <div class="flex items-center justify-between mb-2 p-2 border rounded-md">
+            <span>{{ $a->resource_name }} {{ rtrim(rtrim(number_format($a->allocated_quantity, 2), '0'), '.') }} {{ $unit }}</span>
+
+            <span class="flex gap-2">
+                <button class="btn btn-warning px-3 py-1 rounded-md text-white hover:bg-yellow-500 transition"
+                        wire:click="openEditAllocationModal({{ $a->allocation_id }})">
+                    Edit
+                </button>
+                <button class="btn btn-danger px-3 py-1 rounded-md text-white hover:bg-red-600 transition"
+                        onclick="if(confirm('Delete this allocation?')) @this.call('deleteAllocation', {{ $a->allocation_id }})">
+                    Delete
+                </button>
+            </span>
+        </div>
+    @endforeach
+
+    @if(count($allocs) === 0)
+        <span class="text-gray-400 italic text-sm">No resources allocated</span>
+    @endif
+</td>
+
+
+
+
                 <td class="flex gap-2">
-                    <button class="btn btn-success" wire:click="openAllocationModal({{ $t->task_id }})">Allocate</button>
-                    <button class="btn btn-primary" wire:click="openAssignMemberModal({{ $t->task_id }}, {{ $p->project_id }})">Assign Member</button>
-                </td>
+    <!-- Allocate -->
+    <button class="btn btn-success px-3 py-1 rounded-md text-white hover:bg-green-600 transition" 
+            wire:click="openAllocationModal({{ $t->task_id }})">
+        Allocate
+    </button>
+
+    <!-- Assign Member -->
+    <button class="btn btn-primary px-3 py-1 rounded-md text-white hover:bg-blue-600 transition" 
+            wire:click="openAssignMemberModal({{ $t->task_id }}, {{ $p->project_id }})">
+        Assign
+    </button>
+</td>
+
             </tr>
         @endforeach
     @else
