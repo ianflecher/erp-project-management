@@ -15,15 +15,21 @@ new #[Layout('components.layouts.app')] class extends Component
     public bool $showMemberModal = false;
     public ?int $project_member_id = null;
     public array $phaseMembers = [];
-    
+    public $projectToDelete = null;
+    public $newMemberName = null;
+    public $editingPhase = [];
+    public $showEditPhaseModal = false;
+
 public array $ganttTasks = []; // tasks for the Gantt chart
 
     public $projectMembers = [];
     public $selectedProjectId;
     public $selectedMemberId;
     public array $managers = [];
-    
-
+    public bool $showEditModal = false;
+    public bool $showDeleteModal = false;
+    public $editProject = [];
+    public $deleteId = null;
 
     // Modals: project, phase, task, view
     public bool $showProjectModal = false;
@@ -32,6 +38,7 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     public bool $showViewPhasesModal = false;
     public bool $showViewTasksModal = false;
     public bool $showEditTaskModal = false;
+    public $editingProject = null;
 
     // Errors
     public ?string $taskError = null;
@@ -50,6 +57,7 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     public int $currentProjectId = 0; // used when opening phases modal / adding phase
     public int $viewPhasesProjectId = 0;
     public array $viewPhases = [];
+
 
     public string $phase_name = '';
     public string $phase_description = '';
@@ -91,6 +99,145 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     $this->loadManagers();  // load managers into $this->managers
 }
 
+    public function deleteTask($taskId)
+{
+    if (!$taskId) return;
+
+    DB::table('tasks')->where('task_id', $taskId)->delete();
+
+    // Refresh tasks for the current phase
+    $this->viewTasks = DB::table('tasks')
+        ->where('phase_id', $this->viewTasksPhaseId)
+        ->get()
+        ->toArray();
+}
+
+
+    public function openEditPhaseModal($phaseId)
+{
+    // Close the view phases modal first
+    $this->showViewPhasesModal = false;
+
+    $phase = DB::table('project_phases')->where('phase_id', $phaseId)->first();
+
+    // Convert object to array so Livewire can bind inputs
+    $this->editingPhase = [
+        'phase_id' => $phase->phase_id,
+        'phase_name' => $phase->phase_name,
+        'start_date' => $phase->start_date,
+        'end_date' => $phase->end_date,
+        'status' => $phase->status,
+    ];
+
+    $this->showEditPhaseModal = true;
+}
+
+
+// Update phase (call from a modal form)
+public function updatePhase()
+{
+    if (empty($this->editingPhase['phase_id'])) return;
+
+    DB::table('project_phases')->where('phase_id', $this->editingPhase['phase_id'])->update([
+        'phase_name' => $this->editingPhase['phase_name'],
+        'start_date' => $this->editingPhase['start_date'],
+        'end_date' => $this->editingPhase['end_date'],
+        'status' => $this->editingPhase['status'],
+        'updated_at' => now(),
+    ]);
+
+    $this->showEditPhaseModal = false;
+    $this->editingPhase = [];
+
+    $this->loadProjects(); // refresh phases after update
+}
+
+
+// Delete a phase
+public function deletePhase($phaseId)
+{
+    if (!$phaseId) return;
+
+    // Delete the phase
+    DB::table('project_phases')->where('phase_id', $phaseId)->delete();
+
+    // Refresh the list of phases for the current project
+    $this->viewPhases = DB::table('project_phases')
+        ->where('project_id', $this->viewPhasesProjectId)
+        ->get()
+        ->toArray();
+}
+
+
+   
+
+public function openEditModal($projectId)
+{
+    $project = DB::table('projects')->where('project_id', $projectId)->first();
+
+    if ($project) {
+        $this->editProject = (array) $project; // convert object to array
+        $this->showEditModal = true;
+    }
+}
+
+public function closeEditModal()
+{
+    $this->showEditModal = false;
+    $this->editProject = [];
+}
+
+public function updateProject()
+{
+    if (!isset($this->editProject['project_id'])) {
+        return;
+    }
+
+    DB::table('projects')
+        ->where('project_id', $this->editProject['project_id'])
+        ->update([
+            'project_name' => $this->editProject['project_name'] ?? '',
+            'description' => $this->editProject['description'] ?? '',
+            'budget_total' => $this->editProject['budget_total'] ?? 0,
+            'updated_at' => now(),
+        ]);
+
+    $this->closeEditModal();
+    $this->loadProjects(); // refresh the table
+}
+
+public function confirmDelete($projectId)
+{
+    $this->projectToDelete = $projectId;
+    $this->showDeleteModal = true;
+}
+
+public function deleteProject()
+{
+    if ($this->projectToDelete) {
+        DB::table('projects')->where('project_id', $this->projectToDelete)->delete();
+
+        $this->showDeleteModal = false;
+
+        // Refresh your projects list
+        $this->projects = DB::table('projects')->get()->toArray();
+
+        $this->projectToDelete = null;
+    }
+}
+
+
+
+
+public function closeDeleteModal()
+{
+    $this->showDeleteModal = false;
+    $this->deleteId = null;
+}
+
+
+
+
 public function loadEmployees()
 {
     $this->employees = DB::table('hr_employees')
@@ -108,11 +255,6 @@ public function loadManagers()
         ->get()
         ->toArray();
 }
-
-
-
-
-
 
     public function openMemberModal($projectId)
 {
@@ -135,14 +277,38 @@ public function closeMemberModal()
 
 public function addMember()
 {
-    if (!$this->selectedMemberId) return;
-
     $project = DB::table('projects')->where('project_id', $this->selectedProjectId)->first();
     $members = $project->project_member_id ? explode(',', $project->project_member_id) : [];
-    if(!in_array($this->selectedMemberId, $members)) {
-        $members[] = $this->selectedMemberId;
+
+    // Add new member as employee
+    if ($this->newMemberName) {
+        $name = trim($this->newMemberName);
+        
+        // Generate a simple email (you can adjust logic)
+        $email = strtolower(str_replace(' ', '.', $name)) . '@company.com';
+
+        // Insert into employees table
+        $employeeId = DB::table('hr_employees')->insertGetId([
+            'full_name' => $name,
+            'role' => 'Employee',       // default role
+            'email' => $email,          // auto generated
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $members[] = $employeeId;      // add to project
+        $this->newMemberName = null;
     }
 
+    // Add existing employee
+    if ($this->selectedMemberId) {
+        if (!in_array($this->selectedMemberId, $members)) {
+            $members[] = $this->selectedMemberId;
+        }
+        $this->selectedMemberId = null;
+    }
+
+    // Save updated project members
     DB::table('projects')->where('project_id', $this->selectedProjectId)->update([
         'project_member_id' => implode(',', $members),
         'updated_at' => now(),
@@ -150,6 +316,8 @@ public function addMember()
 
     $this->openMemberModal($this->selectedProjectId); // refresh members
 }
+
+
 
 public function removeMember($employeeId)
 {
@@ -768,105 +936,148 @@ private function updateProjectProgressByPhase($phase_id)
         {{ $successMessage }}
     </div>
 @endif
+{{-- ✅ Edit Project Modal --}}
+@if ($showEditModal)
+    <div class="modal" aria-hidden="{{ $showEditModal ? 'false' : 'true' }}">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 class="text-lg font-semibold">Edit Project</h3>
+                <button wire:click="closeEditModal" class="text-white font-bold text-xl">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label>
+                    <span class="font-medium text-gray-700">Project Name</span>
+                    <input type="text" wire:model="editProject.project_name" class="w-full border rounded p-2 mt-1">
+                </label>
+
+                <label>
+                    <span class="font-medium text-gray-700">Description</span>
+                    <textarea wire:model="editProject.description" class="w-full border rounded p-2 mt-1"></textarea>
+                </label>
+
+                <label>
+                    <span class="font-medium text-gray-700">Budget</span>
+                    <input type="number" wire:model="editProject.budget_total" class="w-full border rounded p-2 mt-1">
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button wire:click="closeEditModal" class="btn btn-secondary">Cancel</button>
+                <button wire:click="updateProject" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+@endif
+
+{{-- ✅ Delete Confirmation Modal --}}
+@if ($showDeleteModal)
+    <div class="modal" aria-hidden="{{ $showDeleteModal ? 'false' : 'true' }}">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 class="text-lg font-semibold">Confirm Delete</h3>
+                <button wire:click="closeDeleteModal" class="text-white font-bold text-xl">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this project? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button wire:click="closeDeleteModal" class="btn btn-secondary">Cancel</button>
+                <button wire:click="deleteProject" class="btn btn-danger">Delete</button>
+            </div>
+        </div>
+    </div>
+@endif
 
 
     <!-- Add Project Button -->
     <button type="button" wire:click="openProjectModal" class="btn btn-primary" style="margin-bottom:1rem;">+ Add Project</button>
 
-    <!-- Projects Table -->
-    <div class="table-header">Projects</div>
-   <table>
+    <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
     <thead>
+        <!-- Green header bar -->
         <tr>
-            <th>Name</th>
-            <th>Description</th>
-            <th>Start</th>
-            <th>End</th>
-            <th>Status</th>
-            <th>Budget</th>
-            <th>Manager</th>
-            <th>Member</th>
-            <th>Phases</th>
-            <th>Gantt</th> <!-- New Column -->
+            <th colspan="11"
+                style="background-color:#2e7d32;color:white;text-align:left;
+                       padding:10px 12px;font-size:1rem;">
+                Projects
+            </th>
+        </tr>
+
+        <!-- Column headers -->
+        <tr style="background-color: #f8f9fa; text-align:left;">
+            <th style="padding:8px;">Name</th>
+            <th style="padding:8px;">Description</th>
+            <th style="padding:8px;">Start</th>
+            <th style="padding:8px;">End</th>
+            <th style="padding:8px;">Status</th>
+            <th style="padding:8px;">Budget</th>
+            <th style="padding:8px;">Manager</th>
+            <th style="padding:8px;">Member</th>
+            <th style="padding:8px;">Phases</th>
+            <th style="padding:8px;">Gantt</th>
+            <th style="padding:8px; text-align:center;">Actions</th>
         </tr>
     </thead>
+
     <tbody>
         @foreach ($projects as $p)
-            <tr>
-                <td>{{ $p->project_name }}</td>
-                <td>{{ $p->description }}</td>
-                <td>{{ $p->start_date }}</td>
-                <td>{{ $p->end_date }}</td>
-                <td>{{ $p->status }}</td>
-                <td>{{ number_format($p->budget_total, 2) }}</td>
-                <td>{{ $p->manager_name ?? 'Unknown' }}</td>
-                <td>
-                    <!-- View Member Button -->
-                    <button type="button" 
-                        wire:click="openMemberModal({{ $p->project_id }})"
-                        style="
-                background-color: #218838;
-                color: #fff;
-                border: none;
-                border-radius: 8px;
-                padding: 8px 14px;
-                font-size: 0.9rem;
-                font-weight: 500;
-                line-height: 1.2;
-                white-space: nowrap;
-                cursor: pointer;
-                transition: background-color 0.2s ease;
-            ">
+            <tr style="border-bottom:1px solid #eee;">
+                <td style="padding:8px;">{{ $p->project_name }}</td>
+                <td style="padding:8px;">{{ $p->description }}</td>
+                <td style="padding:8px;">{{ $p->start_date }}</td>
+                <td style="padding:8px;">{{ $p->end_date }}</td>
+                <td style="padding:8px;">{{ $p->status }}</td>
+                <td style="padding:8px;">₱{{ number_format($p->budget_total, 2) }}</td>
+                <td style="padding:8px;">{{ $p->manager_name ?? 'Unknown' }}</td>
+
+                <!-- Member -->
+                <td style="padding:8px;">
+                    <button wire:click="openMemberModal({{ $p->project_id }})"
+                        style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
+                               padding:4px 8px;font-size:0.8rem;cursor:pointer;">
                         View
                     </button>
                 </td>
-                <td>
-    <div style="display: flex; gap: 0.5rem; align-items: center;">
 
-        <!-- View Phases Button -->
-        <button type="button" 
-            wire:click="openViewPhasesModal({{ $p->project_id }})"
-            style="
-                background-color: #218838;
-                color: #fff;
-                border: none;
-                border-radius: 8px;
-                padding: 8px 14px;
-                font-size: 0.9rem;
-                font-weight: 500;
-                line-height: 1.2;
-                white-space: nowrap;
-                cursor: pointer;
-                transition: background-color 0.2s ease;
-            ">
-            View
+                <!-- Phases -->
+                <td style="padding:8px;">
+                    <button wire:click="openViewPhasesModal({{ $p->project_id }})"
+                        style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
+                               padding:4px 8px;font-size:0.8rem;cursor:pointer;">
+                        View
+                    </button>
+                </td>
+
+                <!-- Gantt -->
+                <td style="padding:8px;">
+                    <button onclick="loadGantt({{ $p->project_id }})"
+                        style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
+                               padding:4px 8px;font-size:0.8rem;cursor:pointer;">
+                        View
+                    </button>
+                </td>
+
+                <!-- Actions -->
+                <td style="padding:8px;text-align:center;">
+    <div style="display:flex;justify-content:center;align-items:center;gap:0.3rem;">
+        <button wire:click="openEditModal({{ $p->project_id }})"
+            style="background-color:#007bff;color:#fff;border:none;border-radius:5px;
+                   padding:4px 8px;font-size:0.8rem;cursor:pointer;">
+            Edit
+        </button>
+        <button wire:click="confirmDelete({{ $p->project_id }})"
+            style="background-color:#dc3545;color:#fff;border:none;border-radius:5px;
+                   padding:4px 8px;font-size:0.8rem;cursor:pointer;">
+            Delete
         </button>
     </div>
 </td>
-                <td>
-                    <!-- New View Gantt Button -->
-                    <button type="button"
-                       onclick="loadGantt({{ $p->project_id }})"
-                        style="
-                background-color: #218838;
-                color: #fff;
-                border: none;
-                border-radius: 8px;
-                padding: 8px 14px;
-                font-size: 0.9rem;
-                font-weight: 500;
-                line-height: 1.2;
-                white-space: nowrap;
-                cursor: pointer;
-                transition: background-color 0.2s ease;
-            ">
-                        View
-                    </button>
-                </td>
+
             </tr>
         @endforeach
     </tbody>
 </table>
+
+
 
 <div id="gantt_here" style="width:100%; height:500px;"></div>
 
@@ -958,42 +1169,103 @@ private function updateProjectProgressByPhase($phase_id)
 
             @if(count($viewPhases))
                 <table style="width:100%; border-collapse: collapse;">
-                    <thead>
-                        <tr>
-                            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Phase Name</th>
-                            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Start</th>
-                            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">End</th>
-                            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Status</th>
-                            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($viewPhases as $ph)
-                            <tr>
-                                <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $ph->phase_name }}</td>
-                                <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $ph->start_date }}</td>
-                                <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $ph->end_date }}</td>
-                                <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $ph->status }}</td>
-                                <td style="border-bottom:1px solid #eee; padding:0.5rem; display:flex; gap:0.25rem;">
-                                    <button type="button" wire:click="openTaskModal({{ $ph->phase_id }})" 
-                                            style="background:#28a745; color:#fff; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-size:0.75rem; cursor:pointer;">
-                                        + Task
-                                    </button>
-                                    <button type="button" wire:click="openViewTasksModal({{ $ph->phase_id }})" 
-                                            style="background:#28a745; color:#fff; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-size:0.75rem; cursor:pointer;">
-                                        View
-                                    </button>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+    <thead>
+        <tr>
+            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Phase Name</th>
+            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Start</th>
+            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">End</th>
+            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Status</th>
+            <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach($viewPhases as $ph)
+            <tr>
+                <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $ph->phase_name }}</td>
+                <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $ph->start_date }}</td>
+                <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $ph->end_date }}</td>
+                <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $ph->status }}</td>
+                <td style="border-bottom:1px solid #eee; padding:0.5rem; display:flex; gap:0.25rem; flex-wrap:wrap;">
+                    <button type="button" wire:click="openTaskModal({{ $ph->phase_id }})" 
+                            style="background:#28a745; color:#fff; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-size:0.75rem; cursor:pointer;">
+                        + Task
+                    </button>
+                    <button type="button" wire:click="openViewTasksModal({{ $ph->phase_id }})" 
+                            style="background:#28a745; color:#fff; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-size:0.75rem; cursor:pointer;">
+                        View
+                    </button>
+                    <button type="button" 
+        wire:click="openEditPhaseModal({{ $ph->phase_id }})" 
+        style="background:#ffc107; color:#fff; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-size:0.75rem; cursor:pointer;">
+    Edit
+</button>
+
+<button type="button" 
+        onclick="if(confirm('Are you sure you want to delete this phase?')) { @this.call('deletePhase', {{ $ph->phase_id }}) }" 
+        style="background:#dc3545; color:#fff; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-size:0.75rem; cursor:pointer;">
+    Delete
+</button>
+
+                </td>
+            </tr>
+        @endforeach
+    </tbody>
+</table>
+
             @else
                 <p style="text-align:center; color:#6c757d;">No phases found for this project.</p>
             @endif
         </div>
     </div>
 </div>
+
+@if($showEditPhaseModal)
+<div class="modal" aria-hidden="false">
+    <div class="modal-dialog">
+        <!-- Header -->
+        <div class="modal-header">
+            <h3 class="text-lg font-semibold">Edit Phase</h3>
+            <button type="button" wire:click="$set('showEditPhaseModal', false)" style="font-size:1.25rem;font-weight:bold;">&times;</button>
+        </div>
+
+        <!-- Body / Form -->
+        <div class="modal-body">
+            <form wire:submit.prevent="updatePhase" style="display:flex; flex-direction:column; gap:0.75rem;">
+                <div style="display:flex; flex-direction:column;">
+                    <label class="font-medium">Phase Name</label>
+                    <input type="text" wire:model.defer="editingPhase.phase_name" style="border:1px solid #d1d5db; border-radius:0.375rem; padding:0.5rem; width:100%;" />
+                </div>
+
+                <div style="display:flex; flex-direction:column;">
+                    <label class="font-medium">Start Date</label>
+                    <input type="date" wire:model.defer="editingPhase.start_date" style="border:1px solid #d1d5db; border-radius:0.375rem; padding:0.5rem; width:100%;" />
+                </div>
+
+                <div style="display:flex; flex-direction:column;">
+                    <label class="font-medium">End Date</label>
+                    <input type="date" wire:model.defer="editingPhase.end_date" style="border:1px solid #d1d5db; border-radius:0.375rem; padding:0.5rem; width:100%;" />
+                </div>
+
+                <div style="display:flex; flex-direction:column;">
+                    <label class="font-medium">Status</label>
+                    <select wire:model.defer="editingPhase.status" style="border:1px solid #d1d5db; border-radius:0.375rem; padding:0.5rem; width:100%;">
+                        <option value="Not Started">Not Started</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                    </select>
+                </div>
+
+                <!-- Footer / Buttons -->
+                <div class="modal-footer">
+                    <button type="button" wire:click="$set('showEditPhaseModal', false)" style="background:#9ca3af;color:#fff;border:none;border-radius:0.25rem;padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;">Cancel</button>
+                    <button type="submit" style="background:#2e7d32;color:#fff;border:none;border-radius:0.25rem;padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endif
+
 
 
     <!-- Task Modal (Add) -->
@@ -1030,7 +1302,7 @@ private function updateProjectProgressByPhase($phase_id)
 </div>
                 <button type="button" wire:click="closeViewTasksModal" class="btn btn-warning">Close</button>
             </div>
-            <div class="modal-body">
+            <div style="overflow-x:auto;">
                 @if(count($viewTasks))
                     <table style="width:100%; border-collapse: collapse;">
                         <thead>
@@ -1051,17 +1323,31 @@ private function updateProjectProgressByPhase($phase_id)
                                     <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $t->end_date }}</td>
                                     <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $t->status }}</td>
                                     <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $t->progress_percentage }}%</td>
-                                    <td style="border-bottom:1px solid #eee; padding:0.5rem; display:flex; gap:0.25rem;">
-                                        @if($t->status === 'Done')
-                                            <button type="button" class="btn btn-danger" style="padding:0.25rem 0.5rem; font-size:0.75rem;" disabled>Already Done</button>
-                                        @else
-                                            <button type="button" wire:click="cycleTaskStatus({{ $t->task_id }})" class="btn btn-primary" style="padding:0.25rem 0.5rem; font-size:0.75rem;">Change Status</button>
-                                        @endif
+                                    <td style="border-bottom:1px solid #eee; padding:0.5rem;">
+    <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
+        @if($t->status === 'Done')
+            <button type="button" class="btn btn-danger" style="padding:0.25rem 0.5rem; font-size:0.75rem;" disabled>
+                Already Done
+            </button>
+        @else
+            <button type="button" wire:click="cycleTaskStatus({{ $t->task_id }})" class="btn btn-primary" style="padding:0.25rem 0.5rem; font-size:0.75rem;">
+                Change Status
+            </button>
+        @endif
 
-                                        <button type="button" wire:click="editTask({{ $t->task_id }})" class="btn btn-success" style="padding:0.25rem 0.5rem; font-size:0.75rem;">
-                                            Edit
-                                        </button>
-                                    </td>
+        <button type="button" wire:click="editTask({{ $t->task_id }})" class="btn btn-success" style="padding:0.25rem 0.5rem; font-size:0.75rem;">
+            Edit
+        </button>
+
+        <button type="button" 
+                onclick="if(confirm('Are you sure you want to delete this task?')) { @this.call('deleteTask', {{ $t->task_id }}) }" 
+                class="btn btn-danger" 
+                style="padding:0.25rem 0.5rem; font-size:0.75rem;">
+            Delete
+        </button>
+    </div>
+</td>
+
                                 </tr>
                             @endforeach
                         </tbody>
@@ -1103,88 +1389,91 @@ private function updateProjectProgressByPhase($phase_id)
             </div>
         </div>
     </div>
+    
+{{-- Project Members Modal --}}
+<div class="modal" aria-hidden="{{ $showMemberModal ? 'false' : 'true' }}">
+    <div class="modal-dialog" style="max-width:500px; margin:2rem auto; background:#fff; border-radius:0.5rem; overflow:hidden; box-shadow:0 5px 15px rgba(0,0,0,0.3);">
 
-    <div class="modal" style="display: {{ $showMemberModal ? 'flex' : 'none' }};">
-    <div class="modal-dialog">
-        <div class="modal-header">
-            <div>Add Project Member</div>
-            <button type="button" wire:click="closeMemberModal" class="btn btn-warning">Close</button>
-        </div>
-        <div class="modal-body">
-            <form wire:submit.prevent="saveMember">
-                <label>Member:
-                    <select wire:model="project_member_id" required>
-                        <option value="">-- Select Member --</option>
-                        @foreach ($employees as $emp)
-                            <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <button type="submit" class="btn btn-primary">Save Member</button>
-            </form>
-        </div>
-    </div>
-</div>
-<div class="modal fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50" style="display: {{ $showMemberModal ? 'flex' : 'none' }};">
-    <div class="modal-dialog bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
         <!-- Header -->
-        <div class="modal-header flex justify-between items-center mb-4 border-b border-gray-200 pb-2">
-            <div class="text-xl font-semibold text-gray-800">Project Members</div>
-            <button type="button" wire:click="closeMemberModal" class="btn btn-warning px-3 py-1 rounded-md">Close</button>
+        <div class="modal-header" style="background:#2e7d32; padding:1rem; display:flex; justify-content:space-between; align-items:center;">
+            <h3 class="text-xl font-semibold text-white m-0">Project Members</h3>
+            <button type="button" wire:click="closeMemberModal" class="text-white font-bold text-xl" style="background:none; border:none; cursor:pointer;">&times;</button>
         </div>
 
         <!-- Members List -->
-        <div class="modal-body space-y-3 max-h-80 overflow-y-auto">
+        <div class="modal-body" style="max-height:20rem; overflow-y:auto; padding:1rem; background:#f9fafb;">
             @forelse ($projectMembers as $member)
-                <div class="flex justify-between items-center bg-green-50 p-3 rounded-md shadow-sm hover:shadow-md transition">
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#e6f4ea; padding:0.75rem 1rem; border-radius:0.5rem; margin-bottom:0.5rem;">
                     <div>
-                        <div class="font-medium text-gray-800">{{ $member->full_name }}</div>
-                        <div class="text-sm text-gray-600 px-2 py-1 bg-green-200 rounded-full inline-block">{{ $member->role }}</div>
+                        <div style="font-weight:500; color:#1f2937;">{{ is_object($member) ? $member->full_name : str_replace('name:', '', $member) }}</div>
+                        @if(is_object($member))
+                            <div style="display:inline-block; padding:0.15rem 0.5rem; background:#c6f6d5; border-radius:9999px; font-size:0.75rem; color:#1f2937; margin-top:0.25rem;">
+                                {{ $member->role }}
+                            </div>
+                        @endif
                     </div>
-                    <button type="button" wire:click="removeMember({{ $member->employee_id }})" class="btn btn-danger px-3 py-1 rounded-md">
+                    <button type="button" wire:click="removeMember('{{ is_object($member) ? $member->employee_id : $member }}')" style="background-color:#dc3545; color:#fff; border:none; border-radius:0.25rem; padding:0.25rem 0.5rem; font-size:0.8rem; cursor:pointer;">
                         Remove
                     </button>
                 </div>
             @empty
-                <div class="text-center text-gray-400 italic">No members yet.</div>
+                <div style="text-align:center; color:#9ca3af; font-style:italic;">No members yet.</div>
             @endforelse
         </div>
 
         <!-- Add Member Section -->
-        <form class="form-grid mt-4" wire:submit.prevent="addMember">
-            <label class="flex flex-col">
-                Select Employee:
-                <select wire:model="selectedMemberId" class="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400">
-                    <option value="">-- Select Employee --</option>
-                    @foreach ($employees as $emp)
-    @if(!collect($projectMembers)->pluck('employee_id')->contains($emp->employee_id))
-        <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
-    @endif
-@endforeach
+        <form wire:submit.prevent="addMember" style="background:#f3f4f6; padding:1rem; display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end;">
 
-                </select>
-            </label>
-            <button type="submit" class="btn btn-primary">Add Member</button>
-        </form>
+    <!-- New Member Name Input -->
+    <div style="flex:1 1 45%; display:flex; flex-direction:column;">
+        <label style="font-weight:500; margin-bottom:0.25rem;">New Member Name:</label>
+        <input type="text" wire:model.defer="newMemberName" placeholder="Enter full name" 
+               style="border:1px solid #d1d5db; border-radius:0.375rem; padding:0.5rem; outline:none; width:100%;">
     </div>
-    
+
+    <!-- Select Existing Employee -->
+    <div style="flex:1 1 45%; display:flex; flex-direction:column;">
+        <label style="font-weight:500; margin-bottom:0.25rem;">Select Employee:</label>
+        <select wire:model="selectedMemberId" style="border:1px solid #d1d5db; border-radius:0.375rem; padding:0.5rem; outline:none; width:100%;">
+            <option value="">-- Select Employee --</option>
+            @foreach ($employees as $emp)
+                @if(!collect($projectMembers)->pluck('employee_id')->contains($emp->employee_id))
+                    <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
+                @endif
+            @endforeach
+        </select>
+    </div>
+
+    <!-- Buttons -->
+    <div style="flex:1 1 100%; display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
+        <button type="button" wire:click="closeMemberModal" style="background-color:#9ca3af; color:#fff; border:none; border-radius:0.25rem; padding:0.5rem 1rem; font-size:0.8rem; cursor:pointer;">Cancel</button>
+        <button type="submit" style="background-color:#2e7d32; color:#fff; border:none; border-radius:0.25rem; padding:0.5rem 1rem; font-size:0.8rem; cursor:pointer;">Add Member</button>
+    </div>
+
+</form>
+
+    </div>
+
 </div>
+
+
+
 
 
 <!-- Include DHTMLX Gantt -->
 <script src="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.js"></script>
 <link rel="stylesheet" href="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.css">
 <script>
-    function loadGantt(projectId) {
+function loadGantt(projectId) {
     fetch(`/gantt-tasks/${projectId}`)
         .then(res => res.json())
         .then(data => {
-            // Optional: calculate duration for tasks if needed
+            // Optional: compute duration if needed
             const ganttData = {
-                data: data.map(t => ({
-                    ...t,
-                    duration: t.end_date && t.start_date ? 
-                        Math.ceil((new Date(t.end_date) - new Date(t.start_date)) / (1000*60*60*24)) + 1 
+                data: data.map(item => ({
+                    ...item,
+                    duration: item.start_date && item.end_date ?
+                        Math.ceil((new Date(item.end_date) - new Date(item.start_date)) / (1000*60*60*24)) + 1
                         : 0
                 }))
             };
@@ -1194,7 +1483,4 @@ private function updateProjectProgressByPhase($phase_id)
         })
         .catch(err => console.error("Error fetching Gantt data:", err));
 }
-
-
-
 </script>

@@ -6,11 +6,17 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::table('budgets', function (Blueprint $table) {
-            $table->dropColumn('phase_name'); // remove old column
-            $table->unsignedInteger('phase_id')->after('project_id'); // add new column
-            $table->foreign('phase_id')->references('phase_id')->on('project_phases')->onDelete('cascade');
-        });
+        if (Schema::hasColumn('budgets', 'phase_name')) {
+        $table->dropColumn('phase_name');
+    }
+
+    // Add new column only if it doesn't exist
+    if (!Schema::hasColumn('budgets', 'phase_id')) {
+        $table->unsignedInteger('phase_id')->after('project_id');
+        $table->foreign('phase_id')->references('phase_id')->on('project_phases')->onDelete('cascade');
+    }
+
+    
     }
 
     public function down(): void
