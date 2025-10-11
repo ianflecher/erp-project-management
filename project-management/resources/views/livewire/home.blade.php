@@ -1309,7 +1309,22 @@ private function updateProjectProgressByPhase($phase_id)
     <div class="modal" style="display: {{ $showTaskModal ? 'flex' : 'none' }};">
         <div class="modal-dialog">
             <div class="modal-header">
-                <div>New Task (Phase #{{ $currentPhaseId }})</div>
+                @php
+    $phaseName = 'Unknown Phase';
+    if (!empty($phases) && $viewTasksPhaseId) {
+        foreach ($phases as $ph) {
+            if ($ph->phase_id == $viewTasksPhaseId) {
+                $phaseName = $ph->phase_name;
+                break;
+            }
+        }
+    }
+@endphp
+
+<div>
+    
+    New Tasks for Phase: {{ $phaseName }}
+</div>
                 <button type="button" wire:click="closeTaskModal" class="btn btn-warning">Close</button>
             </div>
             <div class="modal-body">
