@@ -2,333 +2,254 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Illuminate\Support\Facades\DB;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
-    // Modal flags
-    public bool $showBudgetModal = false;
+    public $projects = [];
+    public $phases = [];
+    public $tasks = [];
+    public float $totalBudget = 0;
+
+
+    public $selectedProjectId = null;
     public bool $showAddBudgetModal = false;
-    public bool $showAddResourceModal = false;
+    public ?int $selectedPhaseId = null;
 
-    // Data arrays
-    public array $projects = [];
-    public array $phases = [];
-    public array $projectTasks = [];
-    public array $resources = [];
-    public array $budgets = [];
-    public array $employees = [];
+    public float $estimated_cost = 0;
+    public float $actual_cost = 0;
+    public float $variance = 0;
 
-    // Selected project for modal
-    public ?int $selectedProjectId = null;
+    public $totalEstimated = 0;
+    public $totalActual = 0;
+    public $totalVariance = 0;
 
-    // New Budget/Resource fields
-    public ?int $newBudgetProjectId = null;
-    public ?int $newBudgetPhaseId = null;
-    public float $newEstimatedCost = 0;
-
-    public string $newResourceName = '';
-    public string $newResourceType = 'Food';
-    public float $newResourceUnitCost = 0;
-    public float $newResourceQuantity = 0;
-
-    // Mount method to load initial data
     public function mount()
     {
-        $this->projects = \DB::table('projects')->get()->toArray();
-        $this->resources = \DB::table('resources')->get()->toArray();
-        $this->employees = \DB::table('hr_employees')->get()->toArray();
-        $this->phases = \DB::table('project_phases')->get()->toArray();
-        $this->budgets = \DB::table('budgets')->get()->toArray();
-
-        // Preload tasks grouped by project
-        $this->projectTasks = \DB::table('tasks')
-            ->join('project_phases', 'tasks.phase_id', '=', 'project_phases.phase_id')
-            ->select('tasks.*', 'project_phases.project_id')
-            ->get()
-            ->groupBy('project_id')
-            ->toArray();
+        $this->projects = DB::table('projects')->get();
+        $this->phases = collect();
+        $this->tasks = collect();
     }
 
-    // Open/close modals
-    public function openBudgetModal() { $this->showBudgetModal = true; }
-    public function closeBudgetModal() { $this->showBudgetModal = false; }
-
-    // Save new budget
-    public function saveNewBudget()
+    public function updatedSelectedProjectId($projectId)
     {
-        if(!$this->newBudgetProjectId || !$this->newBudgetPhaseId) return;
+        $this->phases = DB::table('project_phases')
+            ->where('project_id', $projectId)
+            ->get();
 
-        \DB::table('budgets')->insert([
-            'project_id' => $this->newBudgetProjectId,
-            'phase_id' => $this->newBudgetPhaseId,
-            'estimated_cost' => $this->newEstimatedCost,
-            'actual_cost' => 0,
-            'variance' => $this->newEstimatedCost,
+        $this->tasks = DB::table('tasks')
+            ->whereIn('phase_id', $this->phases->pluck('phase_id'))
+            ->get();
+
+        $this->calculateBudgetTotals($projectId);
+    }
+
+    public function calculateBudgetTotals($projectId)
+{
+    // ✅ Get total project budget from projects table
+    $this->totalBudget = DB::table('projects')
+        ->where('project_id', $projectId)
+        ->value('budget_total');
+
+    // ✅ Get total estimated cost from budgets table
+    $this->totalEstimated = DB::table('budgets')
+        ->where('project_id', $projectId)
+        ->sum('estimated_cost');
+
+    // ✅ Get total actual cost from resource_allocations
+    $this->totalActual = DB::table('resource_allocations as ra')
+        ->join('tasks as t', 't.task_id', '=', 'ra.task_id')
+        ->join('project_phases as p', 'p.phase_id', '=', 't.phase_id')
+        ->where('p.project_id', $projectId)
+        ->sum('ra.cost');
+
+    // ✅ Compute variance
+    $this->totalVariance = $this->totalEstimated - $this->totalActual;
+}
+
+    public function openAddBudgetModal($phaseId)
+    {
+        $this->selectedPhaseId = $phaseId;
+        $this->estimated_cost = 0;
+        $this->showAddBudgetModal = true;
+    }
+
+    public function getActualCostForPhase($phaseId)
+{
+    return DB::table('resource_allocations as ra')
+        ->join('tasks as t', 't.task_id', '=', 'ra.task_id')
+        ->where('t.phase_id', $phaseId)
+        ->sum('ra.cost');
+}
+
+
+    public function saveBudget()
+{
+    $this->validate([
+        'estimated_cost' => 'required|numeric|min:0',
+    ]);
+
+    DB::transaction(function () {
+        // ✅ Use your proven working actual cost logic
+        $actualCost = $this->getActualCostForPhase($this->selectedPhaseId);
+
+        // ✅ Compute variance
+        $variance = $this->estimated_cost - $actualCost;
+
+        // ✅ Insert budget record
+        DB::table('budgets')->insert([
+            'project_id' => $this->selectedProjectId,
+            'phase_id' => $this->selectedPhaseId,
+            'estimated_cost' => $this->estimated_cost,
+            'actual_cost' => $actualCost,
+            'variance' => $variance,
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
-        $this->budgets = \DB::table('budgets')->get()->toArray();
-        $this->showAddBudgetModal = false;
-        $this->newBudgetPhaseId = null;
-        $this->newEstimatedCost = 0;
-    }
+        // ✅ Journal entry
+        $reference = 'BUD-' . strtoupper(uniqid());
+        $phaseName = DB::table('project_phases')->where('phase_id', $this->selectedPhaseId)->value('phase_name');
+        $projectName = DB::table('projects')->where('project_id', $this->selectedProjectId)->value('project_name');
 
-    // Save new resource
-    public function saveNewResource()
-    {
-        if(!$this->newResourceName || !$this->newResourceQuantity) return;
-
-        \DB::table('resources')->insert([
-            'resource_name' => $this->newResourceName,
-            'type' => $this->newResourceType,
-            'unit_cost' => $this->newResourceUnitCost,
-            'availability_quantity' => $this->newResourceQuantity,
-            'status' => 'Active',
+        DB::table('journal_entries')->insert([
+            'date' => now()->toDateString(),
+            'reference_no' => $reference,
+            'description' => "Budget added for project '{$projectName}' (Phase: {$phaseName}) — Estimated ₱" .
+                             number_format($this->estimated_cost, 2) .
+                             " | Actual ₱" . number_format($actualCost, 2),
+            'created_by' => auth()->id() ?? 1,
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
+    });
 
-        $this->resources = \DB::table('resources')->get()->toArray();
-        $this->showAddResourceModal = false;
-        $this->newResourceName = '';
-        $this->newResourceQuantity = 0;
-        $this->newResourceUnitCost = 0;
-        $this->newResourceType = 'Food';
-    }
+    // ✅ Refresh totals after saving
+    $this->calculateBudgetTotals($this->selectedProjectId);
+    $this->showAddBudgetModal = false;
+}
+
+
+
 };
 ?>
 
-<div>
+<!-- ✅ View Section -->
+<div class="p-6">
 
-    <!-- Dashboard Cards -->
-    <div class="dashboard-cards">
-        <div class="card">
-            <div class="card-title">Total Projects</div>
-            <div class="card-value">{{ count($projects) }}</div>
-        </div>
-        <div class="card">
-            <div class="card-title">Types of Resources</div>
-            <div class="card-value">{{ count($resources) }}</div>
-        </div>
+    <!-- Header -->
+    <div style="
+        background:#2e7d32;
+        color:white;
+        padding:1rem 1.5rem;
+        border-radius:10px;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        box-shadow:0 4px 10px rgba(0,0,0,0.15);
+    ">
+        <h2 style="font-size:1.3rem; font-weight:600; margin:0;">💰 Budget Management</h2>
+        @if ($selectedProjectId)
+            <span style="font-size:0.9rem;">Project ID: {{ $selectedProjectId }}</span>
+        @endif
     </div>
 
-    <!-- Action Buttons -->
-    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin:1rem 0;">
-        <button class="btn btn-success" wire:click="openBudgetModal">View Budget & Resources</button>
+    <!-- Project Dropdown -->
+    <div style="margin-top:1.2rem;">
+        <label style="font-weight:600; color:#1b5e20;">Select Project</label>
+        <select wire:model.live="selectedProjectId" 
+            style="width:100%; padding:0.7rem; border:1px solid #ccc; border-radius:8px; margin-top:0.3rem;">
+            <option value="">-- Choose Project --</option>
+            @foreach ($projects as $proj)
+                <option value="{{ $proj->project_id }}">{{ $proj->project_name }}</option>
+            @endforeach
+        </select>
     </div>
 
-    <!-- Projects & Tasks Table -->
-    <div class="data-table">
-        <div class="table-header">
-            <div>Projects & Tasks</div>
+    <!-- Project Budget Summary -->
+    @if ($selectedProjectId && $phases->isNotEmpty())
+        <div style="
+    margin-top:1.8rem;
+    background:white;
+    border-radius:10px;
+    padding:1.2rem 1.5rem;
+    box-shadow:0 3px 10px rgba(0,0,0,0.08);
+    border-left:6px solid #2e7d32;
+">
+    <h3 style="font-size:1.25rem; font-weight:600; color:#1b5e20;">📊 Project Budget Summary</h3>
+
+    <div style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:1rem;">
+        <div style="background:#f1f8e9; padding:1rem; border-radius:8px; text-align:center;">
+            <h4 style="font-size:0.9rem; color:#388e3c;">Total Project Budget</h4>
+            <p style="font-size:1.3rem; font-weight:600;">₱{{ number_format($totalBudget, 2) }}</p>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Project</th>
-                    <th>Phase</th>
-                    <th>Task</th>
-                    <th>Assigned Employee</th>
-                    <th>Resources</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($projects as $p)
-                    @foreach($projectTasks[$p->project_id] ?? [] as $t)
-                        <tr>
-                            <td>{{ $p->project_name }}</td>
-                            <td>{{ DB::table('project_phases')->where('phase_id', $t->phase_id)->value('phase_name') }}</td>
-                            <td>{{ $t->task_name }}</td>
-                            <td>
-                                @php
-                                    $emp = collect($employees)->first(fn($e) => $e->employee_id == $t->assigned_to);
-                                @endphp
-                                {{ $emp->full_name ?? 'Unassigned' }}
-                            </td>
-                            <td>
-                                @php
-                                    $allocs = DB::table('resource_allocations')
-                                        ->join('resources','resources.resource_id','=','resource_allocations.resource_id')
-                                        ->where('resource_allocations.task_id',$t->task_id)
-                                        ->select('resources.resource_name','resource_allocations.allocated_quantity')
-                                        ->get();
-                                @endphp
-                                @foreach($allocs as $a)
-                                    {{ $a->resource_name }} ({{ $a->allocated_quantity }})<br>
-                                @endforeach
-                            </td>
-                            <td>
-                                <button class="btn btn-success" wire:click="openAllocationModal({{ $t->task_id }})">Allocate</button>
-                            </td>
-                        </tr>
-                    @endforeach
-                @endforeach
-            </tbody>
-        </table>
     </div>
+</div>
 
-    <!-- Budget & Resource Modal -->
-    <div class="modal" aria-hidden="{{ $showBudgetModal ? 'false' : 'true' }}">
-        <div class="modal-dialog">
-            <div class="modal-header">
-                Budget & Resource Management
-                <button class="btn btn-warning" wire:click="closeBudgetModal">Close</button>
-            </div>
 
-            <div class="modal-body">
+        <!-- Phases & Tasks -->
+        <h2 style="margin-top:1.5rem; font-size:1.2rem; font-weight:600; color:#1b5e20;">📋 Project Phases</h2>
 
-                <!-- Select Project -->
-                <div style="margin-bottom:1rem;">
-                    <label>Select Project:
-                        <select wire:model="selectedProjectId">
-                            <option value="">-- Select Project --</option>
-                            @foreach($projects as $p)
-                                <option value="{{ $p->project_id }}">{{ $p->project_name }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:1rem;">
+            @foreach ($phases as $phase)
+                <div style="
+                    background:white;
+                    border-radius:10px;
+                    box-shadow:0 2px 6px rgba(0,0,0,0.05);
+                    padding:1.2rem;
+                ">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <h3 style="font-size:1.05rem; font-weight:600; color:#2e7d32;">{{ $phase->phase_name }}</h3>
+                            <p style="font-size:0.85rem; color:#666;">Status: <b>{{ ucfirst($phase->status) }}</b></p>
+                        </div>
+                        <button wire:click="openAddBudgetModal({{ $phase->phase_id }})"
+                            style="background:#43a047; color:white; border:none; border-radius:8px; padding:0.4rem 0.8rem; cursor:pointer;">
+                            + Add Budget
+                        </button>
+                    </div>
 
-                @if($selectedProjectId)
                     @php
-                        $project = collect($projects)->first(fn($p) => $p->project_id == $selectedProjectId);
-                        $projectBudgets = collect($budgets)->where('project_id', $selectedProjectId);
-                        $projectPhases = collect($phases)->where('project_id', $selectedProjectId);
+                        $phaseTasks = $tasks->where('phase_id', $phase->phase_id);
                     @endphp
 
-                    <!-- Project Total Budget -->
-                    <h4>Project Budget</h4>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Project</th>
-                                <th>Total Budget</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>{{ $project->project_name }}</td>
-                                <td>{{ number_format($project->budget_total, 2) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <!-- Add Budget Form -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin:1rem 0 0.5rem;">
-                        <h4>Phase Budgets</h4>
-                        <button class="btn btn-primary" wire:click="$set('showAddBudgetModal', true)">Add Phase Budget</button>
-                    </div>
-
-                    @if($showAddBudgetModal)
-                        <div class="form-grid" style="margin-bottom:1rem;">
-                            <label>Phase:
-                                <select wire:model="newBudgetPhaseId">
-                                    <option value="">-- Select Phase --</option>
-                                    @foreach($projectPhases as $phase)
-                                        <option value="{{ $phase->phase_id }}">{{ $phase->phase_name }}</option>
-                                    @endforeach
-                                </select>
-                            </label>
-
-                            <label>Estimated Cost:
-                                <input type="number" wire:model="newEstimatedCost" step="0.01">
-                            </label>
-
-                            <div style="grid-column: span 2;">
-                                <button class="btn btn-success" wire:click="saveNewBudget">Save Budget</button>
-                                <button class="btn btn-secondary" wire:click="$set('showAddBudgetModal', false)">Cancel</button>
-                            </div>
-                        </div>
-                    @endif
-
-                    <!-- Phase Budgets Table -->
-                    @if($projectBudgets->count())
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Phase</th>
-                                    <th>Estimated Cost</th>
-                                    <th>Actual Cost</th>
-                                    <th>Variance</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($projectBudgets as $b)
-                                    <tr>
-                                        <td>{{ DB::table('project_phases')->where('phase_id', $b->phase_id)->value('phase_name') }}</td>
-                                        <td>{{ $b->estimated_cost }}</td>
-                                        <td>{{ $b->actual_cost }}</td>
-                                        <td>{{ $b->variance }}</td>
-                                    </tr>
+                    <div style="margin-top:0.8rem;">
+                        <h4 style="font-size:0.9rem; color:#1b5e20;">Tasks:</h4>
+                        @if ($phaseTasks->isNotEmpty())
+                            <ul style="list-style:disc; margin-left:1rem; color:#333;">
+                                @foreach ($phaseTasks as $task)
+                                    <li>{{ $task->task_name }} <span style="font-size:0.8rem; color:#777;">({{ ucfirst($task->status) }})</span></li>
                                 @endforeach
-                            </tbody>
-                        </table>
-                    @endif
-
-                    <!-- Resources Section -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin:1rem 0 0.5rem;">
-                        <h4>Resources</h4>
-                        <button class="btn btn-primary" wire:click="$set('showAddResourceModal', true)">Add Resource</button>
+                            </ul>
+                        @else
+                            <p style="font-size:0.85rem; color:#777;">No tasks found.</p>
+                        @endif
                     </div>
+                </div>
+            @endforeach
+        </div>
+    @endif
 
-                    <!-- Add Resource Form -->
-                    @if($showAddResourceModal)
-                        <div class="form-grid" style="margin-bottom:1rem;">
-                            <label>Resource Name:
-                                <input type="text" wire:model="newResourceName">
-                            </label>
+    <!-- Add Budget Modal -->
+    @if ($showAddBudgetModal)
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:1000;">
+            <div style="background:white; border-radius:10px; width:380px; box-shadow:0 10px 30px rgba(0,0,0,0.2); overflow:hidden;">
+                <div style="background:#2e7d32; color:white; padding:0.8rem 1rem; display:flex; justify-content:space-between; align-items:center;">
+                    <h3 style="margin:0; font-size:1rem;">Add Budget</h3>
+                    <button wire:click="$set('showAddBudgetModal', false)" style="background:none; border:none; color:white; font-size:1.2rem; cursor:pointer;">×</button>
+                </div>
+                <div style="padding:1rem;">
+                    <label style="font-weight:600;">Estimated Cost</label>
+                    <input type="number" step="0.01" wire:model="estimated_cost" 
+                        style="width:100%; margin-top:0.4rem; padding:0.6rem; border:1px solid #ccc; border-radius:6px;">
+                    @error('estimated_cost') <p style="color:red; font-size:0.8rem;">{{ $message }}</p> @enderror
 
-                            <label>Type:
-                                <select wire:model="newResourceType">
-                                    <option value="Food">Food</option>
-                                    <option value="Equipment">Equipment</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </label>
-
-                            <label>Unit Cost:
-                                <input type="number" wire:model="newResourceUnitCost" step="0.01">
-                            </label>
-
-                            <label>Available Quantity:
-                                <input type="number" wire:model="newResourceQuantity" step="0.01">
-                            </label>
-
-                            <div style="grid-column: span 2;">
-                                <button class="btn btn-success" wire:click="saveNewResource">Save Resource</button>
-                                <button class="btn btn-secondary" wire:click="$set('showAddResourceModal', false)">Cancel</button>
-                            </div>
-                        </div>
-                    @endif
-
-                    <!-- Resources Table -->
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Resource Name</th>
-                                <th>Type</th>
-                                <th>Unit Cost</th>
-                                <th>Available Quantity</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($resources as $r)
-                                <tr>
-                                    <td>{{ $r->resource_name }}</td>
-                                    <td>{{ $r->type }}</td>
-                                    <td>{{ $r->unit_cost }}</td>
-                                    <td>{{ $r->availability_quantity }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-
-                @endif
-
+                    <button wire:click="saveBudget" 
+                        style="width:100%; margin-top:1rem; padding:0.7rem; background:#43a047; color:white; border:none; border-radius:8px; cursor:pointer;">
+                        💾 Save Budget
+                    </button>
+                </div>
             </div>
         </div>
-    </div>
-
+    @endif
 </div>
