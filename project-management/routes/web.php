@@ -10,6 +10,9 @@ Volt::route('/projects/resources', 'projects.resources')->name('projects.resourc
 Volt::route('/projects/budget', 'projects.budget')->name('projects.budget');
 Volt::route('/projects/progress', 'projects.progress')->name('projects.progress');
 
+
+use Carbon\Carbon;
+
 Route::get('/gantt-tasks/{projectId}', function ($projectId) {
     $project = DB::table('projects')->where('project_id', $projectId)->first();
 
@@ -22,19 +25,23 @@ Route::get('/gantt-tasks/{projectId}', function ($projectId) {
                 ->get()
                 ->map(function($t){
                     return [
-    'id' => 'task_'.$t->task_id,
-    'text' => $t->task_name,
-    'start_date' => date('d-m-Y', strtotime($t->start_date)),
-    'end_date' => date('d-m-Y', strtotime($t->end_date)),
-    'progress' => $t->progress_percentage / 100,
-    'parent' => 'phase_'.$t->phase_id
-];
-
+                        'id' => 'task_'.$t->task_id,
+                        'text' => $t->task_name,
+                        'start_date' => Carbon::parse($t->start_date)->format('d-m-Y'),
+                        'end_date' => Carbon::parse($t->end_date)->format('d-m-Y'),
+                        'progress' => $t->progress_percentage / 100,
+                        'parent' => 'phase_'.$t->phase_id
+                    ];
                 });
 
-            // Compute phase start/end from tasks
-            $phaseStart = $tasks->min(fn($t) => $t['start_date']);
-            $phaseEnd   = $tasks->max(fn($t) => $t['end_date']);
+            // Use phase DB dates if available, otherwise compute from tasks
+            $phaseStart = $phase->start_date 
+                ? Carbon::parse($phase->start_date)->format('d-m-Y') 
+                : ($tasks->min(fn($t) => Carbon::createFromFormat('d-m-Y', $t['start_date']))->format('d-m-Y') ?? null);
+
+            $phaseEnd = $phase->end_date 
+                ? Carbon::parse($phase->end_date)->format('d-m-Y') 
+                : ($tasks->max(fn($t) => Carbon::createFromFormat('d-m-Y', $t['end_date']))->format('d-m-Y') ?? null);
 
             return [
                 'id' => 'phase_'.$phase->phase_id,
@@ -47,9 +54,14 @@ Route::get('/gantt-tasks/{projectId}', function ($projectId) {
             ];
         });
 
-    // Compute project start/end from phases
-    $projectStart = $phases->min(fn($p) => $p['start_date']);
-    $projectEnd   = $phases->max(fn($p) => $p['end_date']);
+    // Use project DB dates if available, otherwise compute from phases
+    $projectStart = $project->start_date 
+        ? Carbon::parse($project->start_date)->format('d-m-Y') 
+        : ($phases->min(fn($p) => Carbon::createFromFormat('d-m-Y', $p['start_date']))->format('d-m-Y') ?? null);
+
+    $projectEnd = $project->end_date 
+        ? Carbon::parse($project->end_date)->format('d-m-Y') 
+        : ($phases->max(fn($p) => Carbon::createFromFormat('d-m-Y', $p['end_date']))->format('d-m-Y') ?? null);
 
     $ganttData = [
         [
@@ -77,8 +89,10 @@ Route::get('/gantt-tasks/{projectId}', function ($projectId) {
         }
     }
 
+    \Log::info('Gantt data: ' . json_encode($ganttData));
     return response()->json($ganttData);
 });
+
 
 require __DIR__.'/auth.php';
 
