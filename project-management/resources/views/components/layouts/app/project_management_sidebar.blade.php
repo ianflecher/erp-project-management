@@ -142,6 +142,162 @@
     border-radius: 4px;
 }
 
+/* ===== Friesday Modal Wrapper ===== */
+.friesday-modal {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+}
+
+/* ===== Modal Box ===== */
+.friesday-modal-box {
+    width: 100%;
+    max-width: 90rem; /* same as Tailwind max-w-7xl */
+    background: #fff;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+/* ===== Header ===== */
+.friesday-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #15803d; /* green-700 */
+    color: #fff;
+    padding: 0.75rem 1rem;
+}
+
+.friesday-modal-header h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.friesday-modal-close {
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: bold;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.friesday-modal-close:hover {
+    color: #e5e7eb; /* gray-200 */
+}
+
+/* ===== Body ===== */
+.friesday-modal-body {
+    padding: 1rem;
+}
+
+.friesday-table-container {
+    overflow-x: auto;
+}
+
+/* ===== Table ===== */
+.friesday-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #d1d5db; /* gray-300 */
+    border-radius: 0.375rem;
+}
+
+.friesday-table thead {
+    background-color: #f3f4f6; /* gray-100 */
+}
+
+.friesday-table th,
+.friesday-table td {
+    border: 1px solid #d1d5db;
+    padding: 0.5rem 0.75rem;
+}
+
+.friesday-table th {
+    text-align: left;
+    font-weight: 600;
+}
+
+.friesday-table td {
+    vertical-align: middle;
+}
+
+.friesday-text-right {
+    text-align: right;
+}
+
+.friesday-text-center {
+    text-align: center;
+}
+
+.friesday-table tbody tr:hover {
+    background-color: #f9fafb; /* hover effect */
+    transition: background-color 0.2s;
+}
+
+/* ===== Buttons ===== */
+.friesday-btn {
+    padding: 0.25rem 0.75rem;
+    border: none;
+    border-radius: 0.375rem;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.friesday-btn-warning {
+    background-color: #f59e0b;
+}
+
+.friesday-btn-warning:hover {
+    background-color: #d97706;
+}
+
+.friesday-btn-danger {
+    background-color: #dc2626;
+}
+
+.friesday-btn-danger:hover {
+    background-color: #b91c1c;
+}
+
+/* ===== Footer ===== */
+.friesday-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    background-color: #f3f4f6;
+    padding: 0.75rem 1rem;
+}
+
+.friesday-modal-footer button {
+    background-color: #f59e0b;
+    color: #fff;
+    padding: 0.25rem 1rem;
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.friesday-modal-footer button:hover {
+    background-color: #d97706;
+}
+
+/* ===== Empty State ===== */
+.friesday-empty {
+    text-align: center;
+    color: #9ca3af; /* gray-400 */
+    font-style: italic;
+    padding: 0.5rem;
+}
+
     </style>
 </head>
 <body>

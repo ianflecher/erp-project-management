@@ -482,47 +482,46 @@ public function updatedNewBudgetProjectId($projectId)
 </div>
 
 @if($showViewResourcesModal)
-<div class="modal" aria-hidden="false">
-    <div class=" w-full max-w-7xl bg-white rounded-lg shadow-lg">
+<div class="friesday-modal" aria-hidden="false">
+    <div class="friesday-modal-box">
         <!-- Header -->
-        <div class="modal-header flex justify-between items-center px-4 py-3 bg-green-700 text-white">
-            <h3 class="text-lg font-semibold">All Resources</h3>
-            <button wire:click="closeViewResourcesModal" 
-                    class="text-white text-2xl font-bold hover:text-gray-200">&times;</button>
+        <div class="friesday-modal-header">
+            <h3>All Resources</h3>
+            <button wire:click="closeViewResourcesModal" class="friesday-modal-close">&times;</button>
         </div>
 
         <!-- Body -->
-        <div class="modal-body p-4">
-            <div class="overflow-x-auto">
-                <table class="w-full table-auto border border-gray-300 rounded">
-                    <thead class="bg-gray-100">
+        <div class="friesday-modal-body">
+            <div class="friesday-table-container">
+                <table class="friesday-table">
+                    <thead>
                         <tr>
-                            <th class="border px-3 py-2 text-left">Name</th>
-                            <th class="border px-3 py-2 text-left">Type</th>
-                            <th class="border px-3 py-2 text-right">Unit Cost</th>
-                            <th class="border px-3 py-2 text-right">Availability</th>
-                            <th class="border px-3 py-2 text-left">Status</th>
-                            <th class="border px-3 py-2 text-center">Actions</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th class="friesday-text-right">Unit Cost</th>
+                            <th class="friesday-text-right">Availability</th>
+                            <th>Status</th>
+                            <th class="friesday-text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($resources as $r)
-                        <tr class="hover:bg-gray-50 transition">
-                            <td class="border px-3 py-2">{{ $r->resource_name }}</td>
-                            <td class="border px-3 py-2">{{ $r->type }}</td>
-                            <td class="border px-3 py-2 text-right">{{ number_format($r->unit_cost, 2) }}</td>
-                            <td class="border px-3 py-2 text-right">{{ rtrim(rtrim(number_format($r->availability_quantity, 2), '0'), '.') }}</td>
-                            <td class="border px-3 py-2">{{ $r->status }}</td>
-                            <td class="border px-3 py-2 flex justify-center gap-1">
-                                <button class="btn btn-warning"
+                        <tr>
+                            <td>{{ $r->resource_name }}</td>
+                            <td>{{ $r->type }}</td>
+                            <td class="friesday-text-right">{{ number_format($r->unit_cost, 2) }}</td>
+                            <td class="friesday-text-right">{{ rtrim(rtrim(number_format($r->availability_quantity, 2), '0'), '.') }}</td>
+                            <td>{{ $r->status }}</td>
+                            <td class="friesday-text-center">
+                                <button class="friesday-btn friesday-btn-warning"
                                         wire:click="openEditResourceModal({{ $r->resource_id }})">Edit</button>
-                                <button class="btn btn-danger   "
+                                <button class="friesday-btn friesday-btn-danger"
                                         onclick="if(confirm('Delete this resource?')) @this.call('deleteResource', {{ $r->resource_id }})">Delete</button>
                             </td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="6" class="text-center text-gray-400 italic py-2">No resources found</td>
+                            <td colspan="6" class="friesday-empty">No resources found</td>
                         </tr>
                         @endforelse
                     </tbody>
@@ -531,9 +530,8 @@ public function updatedNewBudgetProjectId($projectId)
         </div>
 
         <!-- Footer -->
-        <div class="modal-footer flex justify-end gap-2 px-4 py-3 bg-gray-100">
-            <button class="bg-yellow-500 text-white px-4 py-1 rounded hover:bg-yellow-600"
-                    wire:click="closeViewResourcesModal">Close</button>
+        <div class="friesday-modal-footer">
+            <button wire:click="closeViewResourcesModal">Close</button>
         </div>
     </div>
 </div>
