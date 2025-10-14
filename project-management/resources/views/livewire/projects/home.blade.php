@@ -945,7 +945,7 @@ private function updateProjectProgressByPhase($phase_id)
     <button type="button" wire:click="openProjectModal" class="btn btn-primary" style="margin-bottom:1rem;">+ Add Project</button>
 
     <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
-    <thead>
+    <thead >
         <!-- Green header bar -->
         <tr>
             <th colspan="11"

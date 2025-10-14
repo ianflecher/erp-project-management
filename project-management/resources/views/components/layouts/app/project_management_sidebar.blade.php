@@ -1064,6 +1064,141 @@ input:focus, select:focus {
     background-color: #5a6268;
 }
 
+/* Table container */
+.budgetresource-table-container {
+    margin: 1rem 0;
+    font-family: Arial, sans-serif;
+}
+
+.budgetresource-table-header {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #166534;
+    margin-bottom: 0.5rem;
+}
+
+.budgetresource-table {
+    width: 100%;
+    border-collapse: collapse;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.budgetresource-table th, .budgetresource-table td {
+    border: 1px solid #d1fae5;
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+}
+
+.budgetresource-table th {
+    background-color: #dcfce7;
+    color: #14532d;
+    font-weight: 600;
+}
+
+.budgetresource-table tr:nth-child(even) {
+    background-color: #f0fdf4;
+}
+
+.budgetresource-alloc-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f0fdf4;
+    padding: 0.3rem 0.5rem;
+    margin-bottom: 0.3rem;
+    border-radius: 5px;
+}
+
+.budgetresource-actions {
+    display: flex;
+    gap: 0.3rem;
+}
+
+.budgetresource-actions-cell {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+}
+
+.budgetresource-no-alloc,
+.budgetresource-no-tasks {
+    font-style: italic;
+    color: #6b7280;
+    font-size: 0.85rem;
+}
+
+/* Buttons */
+.budgetresource-btn-success {
+    background-color: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.budgetresource-btn-success:hover {
+    background-color: #15803d;
+}
+
+.budgetresource-btn-primary {
+    background-color: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.budgetresource-btn-primary:hover {
+    background-color: #1d4ed8;
+}
+
+.budgetresource-btn-warning {
+    background-color: #facc15;
+    color: #1e3a8a;
+    border: none;
+    border-radius: 5px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.budgetresource-btn-warning:hover {
+    background-color: #eab308;
+}
+
+.budgetresource-btn-danger {
+    background-color: #dc2626;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.budgetresource-btn-danger:hover {
+    background-color: #b91c1c;
+}
+
+/* Green header for budgetresource tables */
+.budgetresource-table th {
+    background-color: #2e7d32; /* dark green */
+    color: #fff; /* white text */
+    text-align: left;
+    padding: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+
+.budgetresource-table thead tr {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
 
     </style>
 </head>

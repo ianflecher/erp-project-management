@@ -111,20 +111,22 @@ $this->variance = null;
     $this->showBudgetModal = true;
 }
 
-    public function getActualCostForPhase($phaseId)
+    public function getActualCostForPhase(int $phaseId): float
 {
-    return DB::table('resource_allocations as ra')
+    return (float) DB::table('resource_allocations as ra')
         ->join('tasks as t', 't.task_id', '=', 'ra.task_id')
         ->where('t.phase_id', $phaseId)
         ->sum('ra.cost');
 }
 
+
     public function getActualCostForTask(int $taskId): float
 {
-    return DB::table('resource_allocations')
+    return (float) DB::table('resource_allocations')
         ->where('task_id', $taskId)
         ->sum('cost');
 }
+
 
 
 
@@ -137,8 +139,9 @@ $this->variance = null;
     DB::transaction(function () {
         // ✅ 1. Compute actual cost (use task-based if applicable)
         $actualCost = $this->selectedTaskId
-            ? $this->getActualCostForTask($this->selectedTaskId)
-            : $this->getActualCostForPhase($this->selectedPhaseId);
+    ? $this->getActualCostForTask($this->selectedTaskId)   // task-level
+    : $this->getActualCostForPhase($this->selectedPhaseId); // phase-level
+
 
         // ✅ 2. Compute variance
         $variance = (float)$this->estimatedCost - (float)$actualCost;
@@ -335,14 +338,6 @@ $this->variance = null;
                                     <p style="margin:0; font-size:0.85rem; color:#777;">No budget set</p>
                                 @endif
                             </div>
-
-                            <button 
-                                wire:click="openBudgetModal({{ $phase->phase_id }}, {{ $task->task_id }})"
-                                style="background:{{ $taskBudget ? '#1976d2' : '#43a047' }};
-                                    color:white; border:none; border-radius:8px;
-                                    padding:0.35rem 0.7rem; cursor:pointer; font-size:0.85rem;">
-                                {{ $taskBudget ? 'Edit Budget' : 'Add Budget' }}
-                            </button>
                         </li>
                     @endforeach
                 </ul>
