@@ -12,11 +12,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public array $projects = [];
     public array $employees = [];
     public ?string $successMessage = null;
-    public bool $showMemberModal = false;
-    public ?int $project_member_id = null;
-    public array $phaseMembers = [];
     public $projectToDelete = null;
-    public $newMemberName = null;
     public $editingPhase = [];
     public $showEditPhaseModal = false;
     public $phases = [];
@@ -24,9 +20,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
 public array $ganttTasks = []; // tasks for the Gantt chart
 
-    public $projectMembers = [];
     public $selectedProjectId;
-    public $selectedMemberId;
     public array $managers = [];
     public bool $showEditModal = false;
     public bool $showDeleteModal = false;
@@ -171,8 +165,6 @@ public function deletePhase($phaseId)
 }
 
 
-   
-
 public function openEditModal($projectId)
 {
     $project = DB::table('projects')->where('project_id', $projectId)->first();
@@ -262,82 +254,6 @@ public function loadManagers()
         ->toArray();
 }
 
-    public function openMemberModal($projectId)
-{
-    $this->selectedProjectId = $projectId;
-
-    // Assuming project_member_id stores comma-separated employee IDs
-    $project = DB::table('projects')->where('project_id', $projectId)->first();
-    $this->projectMembers = $project && $project->project_member_id
-        ? DB::table('hr_employees')->whereIn('employee_id', explode(',', $project->project_member_id))->get()
-        : collect();
-
-    $this->showMemberModal = true;
-}
-
-public function closeMemberModal()
-{
-    $this->showMemberModal = false;
-    $this->selectedMemberId = null;
-}
-
-public function addMember()
-{
-    $project = DB::table('projects')->where('project_id', $this->selectedProjectId)->first();
-    $members = $project->project_member_id ? explode(',', $project->project_member_id) : [];
-
-    // Add new member as employee
-    if ($this->newMemberName) {
-        $name = trim($this->newMemberName);
-        
-        // Generate a simple email (you can adjust logic)
-        $email = strtolower(str_replace(' ', '.', $name)) . '@company.com';
-
-        // Insert into employees table
-        $employeeId = DB::table('hr_employees')->insertGetId([
-            'full_name' => $name,
-            'role' => 'Employee',       // default role
-            'email' => $email,          // auto generated
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $members[] = $employeeId;      // add to project
-        $this->newMemberName = null;
-    }
-
-    // Add existing employee
-    if ($this->selectedMemberId) {
-        if (!in_array($this->selectedMemberId, $members)) {
-            $members[] = $this->selectedMemberId;
-        }
-        $this->selectedMemberId = null;
-    }
-
-    // Save updated project members
-    DB::table('projects')->where('project_id', $this->selectedProjectId)->update([
-        'project_member_id' => implode(',', $members),
-        'updated_at' => now(),
-    ]);
-
-    $this->openMemberModal($this->selectedProjectId); // refresh members
-}
-
-
-
-public function removeMember($employeeId)
-{
-    $project = DB::table('projects')->where('project_id', $this->selectedProjectId)->first();
-    $members = $project->project_member_id ? explode(',', $project->project_member_id) : [];
-    $members = array_filter($members, fn($id) => $id != $employeeId);
-
-    DB::table('projects')->where('project_id', $this->selectedProjectId)->update([
-        'project_member_id' => implode(',', $members),
-        'updated_at' => now(),
-    ]);
-
-    $this->openMemberModal($this->selectedProjectId); // refresh members
-}
 
     /***************
      * Project CRUD
@@ -1068,20 +984,20 @@ private function updateProjectProgressByPhase($phase_id)
 
                 <!-- Member -->
                 <td style="padding:8px;">
-                    <button wire:click="openMemberModal({{ $p->project_id }})"
-                        style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
+    <a href="{{ route('projects.members', ['project_id' => $p->project_id]) }}"
+       style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
                                padding:4px 8px;font-size:0.8rem;cursor:pointer;">
-                        View
-                    </button>
-                </td>
+       View
+    </a>
+</td>
 
                 <!-- Phases -->
                 <td style="padding:8px;">
-                    <button wire:click="openViewPhasesModal({{ $p->project_id }})"
-                        style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
+                    <a href="{{ route('projects.phase', ['project_id' => $p->project_id]) }}"
+       style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
                                padding:4px 8px;font-size:0.8rem;cursor:pointer;">
-                        View
-                    </button>
+       View
+    </a>
                 </td>
 
                 <!-- Gantt -->
@@ -1160,27 +1076,7 @@ private function updateProjectProgressByPhase($phase_id)
         </div>
     </div>
 
-    <!-- Phase Modal (Add Phase) -->
-    <div class="modal" style="display: {{ $showPhaseModal ? 'flex' : 'none' }};">
-        <div class="modal-dialog">
-            <div class="modal-header">
-                <div>New Phase for Project #{{ $currentProjectId }}</div>
-                <button type="button" wire:click="closePhaseModal" class="btn btn-warning">Close</button>
-            </div>
-            <div class="modal-body">
-                @if($phaseError)
-                    <p style="color:red; margin-bottom:0.5rem;">{{ $phaseError }}</p>
-                @endif
-                <form class="form-grid" wire:submit.prevent="savePhase">
-                    <label>Phase Name:<input type="text" wire:model="phase_name" required /></label>
-                    <label>Start Date:<input type="date" wire:model="phase_start_date" required /></label>
-                    <label>End Date:<input type="date" wire:model="phase_end_date" required /></label>
-                    <label>Description:<input type="text" wire:model="phase_description" /></label>
-                    <button type="submit" class="btn btn-primary">Save Phase</button>
-                </form>
-            </div>
-        </div>
-    </div>
+    
 
     <!-- View Phases Modal -->
     <div class="modal" style="display: {{ $showViewPhasesModal ? 'flex' : 'none' }}; align-items:center; justify-content:center; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000;">
@@ -1304,127 +1200,6 @@ private function updateProjectProgressByPhase($phase_id)
 @endif
 
 
-
-    <!-- Task Modal (Add) -->
-    <div class="modal" style="display: {{ $showTaskModal ? 'flex' : 'none' }};">
-        <div class="modal-dialog">
-            <div class="modal-header">
-                @php
-    $phaseName = 'Unknown Phase';
-    if (!empty($phases) && $viewTasksPhaseId) {
-        foreach ($phases as $ph) {
-            if ($ph->phase_id == $viewTasksPhaseId) {
-                $phaseName = $ph->phase_name;
-                break;
-            }
-        }
-    }
-@endphp
-
-<div>
-    
-    New Tasks for Phase: {{ $phaseName }}
-</div>
-                <button type="button" wire:click="closeTaskModal" class="btn btn-warning">Close</button>
-            </div>
-            <div class="modal-body">
-                @if($taskError)
-                    <p style="color:red; margin-bottom:0.5rem;">{{ $taskError }}</p>
-                @endif
-                <form class="form-grid" wire:submit.prevent="saveTask">
-                    <label>Task Name:<input type="text" wire:model="task_name" required /></label>
-                    <label>Start Date:<input type="date" wire:model="task_start_date" required /></label>
-                    <label>End Date:<input type="date" wire:model="task_end_date" required /></label>
-                    <label>Description:<input type="text" wire:model="task_description" /></label>
-                    <label>Dependency Task ID:<input type="number" wire:model="task_dependency" min="1" /></label>
-                    
-                    <button type="submit" class="btn btn-primary">Save Task</button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- View Tasks Modal (per Phase) -->
-    <div class="modal" style="display: {{ $showViewTasksModal ? 'flex' : 'none' }};">
-        <div class="modal-dialog">
-            <div class="modal-header">
-                
-               @php
-    $phaseName = 'Unknown Phase';
-    if (!empty($phases) && $viewTasksPhaseId) {
-        foreach ($phases as $ph) {
-            if ($ph->phase_id == $viewTasksPhaseId) {
-                $phaseName = $ph->phase_name;
-                break;
-            }
-        }
-    }
-@endphp
-
-<div>
-    
-    Tasks for Phase: {{ $phaseName }}
-</div>
-
-                <button type="button" wire:click="closeViewTasksModal" class="btn btn-warning">Close</button>
-            </div>
-            <div style="overflow-x:auto;">
-                @if(count($viewTasks))
-                    <table style="width:100%; border-collapse: collapse;">
-                        <thead>
-                            <tr>
-                                <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Task Name</th>
-                                <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Start Date</th>
-                                <th style="border-bottom:1px solid #ccc; padding:0.5rem;">End Date</th>
-                                <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Status</th>
-                                <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Progress</th>
-                                <th style="border-bottom:1px solid #ccc; padding:0.5rem;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($viewTasks as $t)
-                                <tr>
-                                    <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $t->task_name }}</td>
-                                    <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $t->start_date }}</td>
-                                    <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $t->end_date }}</td>
-                                    <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $t->status }}</td>
-                                    <td style="border-bottom:1px solid #eee; padding:0.5rem;">{{ $t->progress_percentage }}%</td>
-                                    <td style="border-bottom:1px solid #eee; padding:0.5rem;">
-    <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
-        @if($t->status === 'Done')
-            <button type="button" class="btn btn-danger" style="padding:0.25rem 0.5rem; font-size:0.75rem;" disabled>
-                Already Done
-            </button>
-        @else
-            <button type="button" wire:click="cycleTaskStatus({{ $t->task_id }})" class="btn btn-primary" style="padding:0.25rem 0.5rem; font-size:0.75rem;">
-                Change Status
-            </button>
-        @endif
-
-        <button type="button" wire:click="editTask({{ $t->task_id }})" class="btn btn-success" style="padding:0.25rem 0.5rem; font-size:0.75rem;">
-            Edit
-        </button>
-
-        <button type="button" 
-                onclick="if(confirm('Are you sure you want to delete this task?')) { @this.call('deleteTask', {{ $t->task_id }}) }" 
-                class="btn btn-danger" 
-                style="padding:0.25rem 0.5rem; font-size:0.75rem;">
-            Delete
-        </button>
-    </div>
-</td>
-
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                @else
-                    <p>No tasks found for this phase.</p>
-                @endif
-            </div>
-        </div>
-    </div>
-
     <!-- Edit Task Modal -->
     <div class="modal" style="display: {{ $showEditTaskModal ? 'flex' : 'none' }};">
         <div class="modal-dialog">
@@ -1455,75 +1230,6 @@ private function updateProjectProgressByPhase($phase_id)
             </div>
         </div>
     </div>
-    
-{{-- Project Members Modal --}}
-<div class="modal" aria-hidden="{{ $showMemberModal ? 'false' : 'true' }}">
-    <div class="modal-dialog" style="max-width:500px; margin:2rem auto; background:#fff; border-radius:0.5rem; overflow:hidden; box-shadow:0 5px 15px rgba(0,0,0,0.3);">
-
-        <!-- Header -->
-        <div class="modal-header" style="background:#2e7d32; padding:1rem; display:flex; justify-content:space-between; align-items:center;">
-            <h3 class="text-xl font-semibold text-white m-0">Project Members</h3>
-            <button type="button" wire:click="closeMemberModal" class="text-white font-bold text-xl" style="background:none; border:none; cursor:pointer;">&times;</button>
-        </div>
-
-        <!-- Members List -->
-        <div class="modal-body" style="max-height:20rem; overflow-y:auto; padding:1rem; background:#f9fafb;">
-            @forelse ($projectMembers as $member)
-                <div style="display:flex; justify-content:space-between; align-items:center; background:#e6f4ea; padding:0.75rem 1rem; border-radius:0.5rem; margin-bottom:0.5rem;">
-                    <div>
-                        <div style="font-weight:500; color:#1f2937;">{{ is_object($member) ? $member->full_name : str_replace('name:', '', $member) }}</div>
-                        @if(is_object($member))
-                            <div style="display:inline-block; padding:0.15rem 0.5rem; background:#c6f6d5; border-radius:9999px; font-size:0.75rem; color:#1f2937; margin-top:0.25rem;">
-                                {{ $member->role }}
-                            </div>
-                        @endif
-                    </div>
-                    <button type="button" wire:click="removeMember('{{ is_object($member) ? $member->employee_id : $member }}')" style="background-color:#dc3545; color:#fff; border:none; border-radius:0.25rem; padding:0.25rem 0.5rem; font-size:0.8rem; cursor:pointer;">
-                        Remove
-                    </button>
-                </div>
-            @empty
-                <div style="text-align:center; color:#9ca3af; font-style:italic;">No members yet.</div>
-            @endforelse
-        </div>
-
-        <!-- Add Member Section -->
-        <form wire:submit.prevent="addMember" style="background:#f3f4f6; padding:1rem; display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end;">
-
-    <!-- New Member Name Input -->
-    <div style="flex:1 1 45%; display:flex; flex-direction:column;">
-        <label style="font-weight:500; margin-bottom:0.25rem;">New Member Name:</label>
-        <input type="text" wire:model.defer="newMemberName" placeholder="Enter full name" 
-               style="border:1px solid #d1d5db; border-radius:0.375rem; padding:0.5rem; outline:none; width:100%;">
-    </div>
-
-    <!-- Select Existing Employee -->
-    <div style="flex:1 1 45%; display:flex; flex-direction:column;">
-        <label style="font-weight:500; margin-bottom:0.25rem;">Select Employee:</label>
-        <select wire:model="selectedMemberId" style="border:1px solid #d1d5db; border-radius:0.375rem; padding:0.5rem; outline:none; width:100%;">
-            <option value="">-- Select Employee --</option>
-            @foreach ($employees as $emp)
-                @if(!collect($projectMembers)->pluck('employee_id')->contains($emp->employee_id))
-                    <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
-                @endif
-            @endforeach
-        </select>
-    </div>
-
-    <!-- Buttons -->
-    <div style="flex:1 1 100%; display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
-        <button type="button" wire:click="closeMemberModal" style="background-color:#9ca3af; color:#fff; border:none; border-radius:0.25rem; padding:0.5rem 1rem; font-size:0.8rem; cursor:pointer;">Cancel</button>
-        <button type="submit" style="background-color:#2e7d32; color:#fff; border:none; border-radius:0.25rem; padding:0.5rem 1rem; font-size:0.8rem; cursor:pointer;">Add Member</button>
-    </div>
-
-</form>
-
-    </div>
-
-</div>
-
-
-
 
 
 <!-- Include DHTMLX Gantt -->

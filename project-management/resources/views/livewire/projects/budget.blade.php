@@ -10,26 +10,62 @@ new #[Layout('components.layouts.app')] class extends Component
     public $phases = [];
     public $tasks = [];
     public float $totalBudget = 0;
+    public array $budgets = [];
+    public ?int $selectedProjectId = null;
+    public ?int $projectId = null;
 
 
-    public $selectedProjectId = null;
     public bool $showAddBudgetModal = false;
     public ?int $selectedPhaseId = null;
+    public bool $showBudgetModal = false;
 
-    public float $estimated_cost = 0;
-    public float $actual_cost = 0;
-    public float $variance = 0;
+   public ?float $estimatedCost = null;
+    public ?float $actualCost = null;
+    public ?float $variance = null;
+
 
     public $totalEstimated = 0;
     public $totalActual = 0;
     public $totalVariance = 0;
 
+    public ?int $selectedTaskId = null;
+
     public function mount()
-    {
-        $this->projects = DB::table('projects')->get();
-        $this->phases = collect();
-        $this->tasks = collect();
-    }
+{
+    
+    $this->projects = DB::table('projects')->get();
+    $this->phases = collect();
+    $this->tasks = collect();
+
+    $this->phases = DB::table('project_phases')
+        ->where('project_id', $this->projectId)
+        ->get();
+
+    $this->tasks = DB::table('tasks')
+        ->whereIn('phase_id', $this->phases->pluck('phase_id'))
+        ->get();
+
+    $this->budgets = DB::table('budgets')->get()->toArray();
+
+}
+
+    protected function resetBudgetFields(): void
+{
+    $this->estimatedCost = null;
+$this->actualCost = null;
+$this->variance = null;
+
+}
+
+
+
+    public function openBudgetModal(int $phaseId, int $taskId): void
+{
+    $this->selectedPhaseId = $phaseId;
+    $this->selectedTaskId = $taskId; // ✅ task-level
+    $this->resetBudgetFields();
+    $this->showBudgetModal = true;
+}
 
     public function updatedSelectedProjectId($projectId)
     {
@@ -67,12 +103,13 @@ new #[Layout('components.layouts.app')] class extends Component
     $this->totalVariance = $this->totalEstimated - $this->totalActual;
 }
 
-    public function openAddBudgetModal($phaseId)
-    {
-        $this->selectedPhaseId = $phaseId;
-        $this->estimated_cost = 0;
-        $this->showAddBudgetModal = true;
-    }
+    public function openAddBudgetModal(int $phaseId,): void
+{
+    $this->selectedPhaseId = $phaseId;
+    $this->selectedTaskId = null; // ✅ phase-level only
+    $this->resetBudgetFields();
+    $this->showBudgetModal = true;
+}
 
     public function getActualCostForPhase($phaseId)
 {
@@ -82,54 +119,85 @@ new #[Layout('components.layouts.app')] class extends Component
         ->sum('ra.cost');
 }
 
+    public function getActualCostForTask(int $taskId): float
+{
+    return DB::table('resource_allocations')
+        ->where('task_id', $taskId)
+        ->sum('cost');
+}
+
+
 
     public function saveBudget()
 {
     $this->validate([
-        'estimated_cost' => 'required|numeric|min:0',
+        'estimatedCost' => 'required|numeric|min:0',
     ]);
 
     DB::transaction(function () {
-        // ✅ Use your proven working actual cost logic
-        $actualCost = $this->getActualCostForPhase($this->selectedPhaseId);
+        // ✅ 1. Compute actual cost (use task-based if applicable)
+        $actualCost = $this->selectedTaskId
+            ? $this->getActualCostForTask($this->selectedTaskId)
+            : $this->getActualCostForPhase($this->selectedPhaseId);
 
-        // ✅ Compute variance
-        $variance = $this->estimated_cost - $actualCost;
+        // ✅ 2. Compute variance
+        $variance = (float)$this->estimatedCost - (float)$actualCost;
 
-        // ✅ Insert budget record
-        DB::table('budgets')->insert([
-            'project_id' => $this->selectedProjectId,
-            'phase_id' => $this->selectedPhaseId,
-            'estimated_cost' => $this->estimated_cost,
-            'actual_cost' => $actualCost,
-            'variance' => $variance,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // ✅ 3. Insert or update the budget record (avoid duplicates)
+        DB::table('budgets')->updateOrInsert(
+    [
+        'project_id' => $this->selectedProjectId,
+        'phase_id'   => $this->selectedPhaseId,
+        'task_id'    => $this->selectedTaskId,
+    ],
+    [
+        'estimated_cost' => (float)$this->estimatedCost,
+        'actual_cost'    => (float)$actualCost,
+        'variance'       => $variance,
+        'updated_at'     => now(),
+    ]
+);
 
-        // ✅ Journal entry
+
+        // ✅ 4. Create journal entry
         $reference = 'BUD-' . strtoupper(uniqid());
-        $phaseName = DB::table('project_phases')->where('phase_id', $this->selectedPhaseId)->value('phase_name');
-        $projectName = DB::table('projects')->where('project_id', $this->selectedProjectId)->value('project_name');
+
+        $phaseName = DB::table('project_phases')
+            ->where('phase_id', $this->selectedPhaseId)
+            ->value('phase_name');
+
+        $projectName = DB::table('projects')
+            ->where('project_id', $this->selectedProjectId)
+            ->value('project_name');
+
+        $taskName = $this->selectedTaskId
+            ? DB::table('tasks')->where('task_id', $this->selectedTaskId)->value('task_name')
+            : null;
+
+        $description = "Budget added for project '{$projectName}'"
+            . " (Phase: {$phaseName}"
+            . ($taskName ? ", Task: {$taskName}" : "")
+            . ") — Estimated ₱" . number_format($this->estimatedCost, 2)
+            . " | Actual ₱" . number_format($actualCost, 2);
 
         DB::table('journal_entries')->insert([
-            'date' => now()->toDateString(),
+            'date'         => now()->toDateString(),
             'reference_no' => $reference,
-            'description' => "Budget added for project '{$projectName}' (Phase: {$phaseName}) — Estimated ₱" .
-                             number_format($this->estimated_cost, 2) .
-                             " | Actual ₱" . number_format($actualCost, 2),
-            'created_by' => auth()->id() ?? 1,
-            'created_at' => now(),
-            'updated_at' => now(),
+            'description'  => $description,
+            'created_by'   => auth()->id() ?? 1,
+            'created_at'   => now(),
+            'updated_at'   => now(),
         ]);
     });
 
-    // ✅ Refresh totals after saving
+    // ✅ 5. Refresh budget totals & close modal
     $this->calculateBudgetTotals($this->selectedProjectId);
+
+    $this->budgets = DB::table('budgets')->get()->toArray();
     $this->showAddBudgetModal = false;
+    $this->showBudgetModal = false;
+    session()->flash('success', 'Budget saved successfully!');
 }
-
-
 
 };
 ?>
@@ -187,48 +255,149 @@ new #[Layout('components.layouts.app')] class extends Component
 </div>
 
 
-        <!-- Phases & Tasks -->
-        <h2 style="margin-top:1.5rem; font-size:1.2rem; font-weight:600; color:#1b5e20;">📋 Project Phases</h2>
+            <!-- Phases & Tasks -->
+            <h2 style="margin-top:1.5rem; font-size:1.2rem; font-weight:600; color:#1b5e20;">📋 Project Phases</h2>
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:1rem;">
-            @foreach ($phases as $phase)
-                <div style="
-                    background:white;
-                    border-radius:10px;
-                    box-shadow:0 2px 6px rgba(0,0,0,0.05);
-                    padding:1.2rem;
-                ">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <h3 style="font-size:1.05rem; font-weight:600; color:#2e7d32;">{{ $phase->phase_name }}</h3>
-                            <p style="font-size:0.85rem; color:#666;">Status: <b>{{ ucfirst($phase->status) }}</b></p>
-                        </div>
-                        <button wire:click="openAddBudgetModal({{ $phase->phase_id }})"
-                            style="background:#43a047; color:white; border:none; border-radius:8px; padding:0.4rem 0.8rem; cursor:pointer;">
-                            + Add Budget
-                        </button>
-                    </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:1rem;">
+                @foreach ($phases as $phase)
+    <div style="
+        background:white;
+        border-radius:10px;
+        box-shadow:0 2px 6px rgba(0,0,0,0.05);
+        padding:1.2rem;
+    ">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <h3 style="font-size:1.05rem; font-weight:600; color:#2e7d32;">{{ $phase->phase_name }}</h3>
+                <p style="font-size:0.85rem; color:#666;">Status: <b>{{ ucfirst($phase->status) }}</b></p>
 
-                    @php
-                        $phaseTasks = $tasks->where('phase_id', $phase->phase_id);
-                    @endphp
+                {{-- ✅ Phase-level Budget Display --}}
+                @php
+                    $phaseBudget = collect($budgets)->firstWhere('phase_id', $phase->phase_id);
+                @endphp
 
-                    <div style="margin-top:0.8rem;">
-                        <h4 style="font-size:0.9rem; color:#1b5e20;">Tasks:</h4>
-                        @if ($phaseTasks->isNotEmpty())
-                            <ul style="list-style:disc; margin-left:1rem; color:#333;">
-                                @foreach ($phaseTasks as $task)
-                                    <li>{{ $task->task_name }} <span style="font-size:0.8rem; color:#777;">({{ ucfirst($task->status) }})</span></li>
-                                @endforeach
-                            </ul>
-                        @else
-                            <p style="font-size:0.85rem; color:#777;">No tasks found.</p>
-                        @endif
-                    </div>
-                </div>
-            @endforeach
+                @if($phaseBudget)
+                    <p style="margin:0; font-size:0.85rem; color:#388e3c;">
+                        💰 Phase Budget — Est: ₱{{ number_format((float)$phaseBudget->estimated_cost, 2) }}
+                        | Act: ₱{{ number_format((float)$phaseBudget->actual_cost, 2) }}
+                    </p>
+                @else
+                    <p style="margin:0; font-size:0.85rem; color:#777;">No phase budget set</p>
+                @endif
+            </div>
+
+            <button wire:click="openAddBudgetModal({{ $phase->phase_id }})"
+                style="background:#43a047; color:white; border:none; border-radius:8px; padding:0.4rem 0.8rem; cursor:pointer;">
+                + Add Budget
+            </button>
         </div>
-    @endif
+
+        <div style="margin-top:0.8rem;">
+            <h4 style="font-size:0.9rem; color:#1b5e20;">Tasks:</h4>
+            @php
+                $phaseTasks = $tasks->where('phase_id', $phase->phase_id);
+            @endphp
+
+            @if ($phaseTasks->isNotEmpty())
+                <ul style="list-style:none; margin:0; padding:0;">
+                    @foreach ($phaseTasks as $task)
+                        @php
+                            $budgetsCollection = collect($budgets);
+
+                            // Task-level budget first
+                            $taskBudget = $budgetsCollection->firstWhere('task_id', $task->task_id);
+
+                            // Fallback to phase budget if no task budget
+                            if (!$taskBudget) {
+                                $taskBudget = $budgetsCollection->firstWhere('phase_id', $phase->phase_id);
+                                $budgetSource = $taskBudget ? 'phase' : null;
+                            } else {
+                                $budgetSource = 'task';
+                            }
+                        @endphp
+
+                        <li style="background:#f9f9f9; border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.4rem; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <strong>{{ $task->task_name }}</strong>
+                                <span style="font-size:0.8rem; color:#777;">({{ ucfirst($task->status) }})</span>
+
+                                @if ($taskBudget)
+                                    <p style="margin:0; font-size:0.85rem; color:#388e3c;">
+                                        💰 Est: ₱{{ number_format((float)$taskBudget->estimated_cost, 2) }}
+                                        | Act: ₱{{ number_format((float)$taskBudget->actual_cost, 2) }}
+                                        @if($budgetSource === 'phase')
+                                            <span style="font-size:0.75rem; color:#666;">(phase budget)</span>
+                                        @else
+                                            <span style="font-size:0.75rem; color:#666;">(task budget)</span>
+                                        @endif
+                                    </p>
+                                @else
+                                    <p style="margin:0; font-size:0.85rem; color:#777;">No budget set</p>
+                                @endif
+                            </div>
+
+                            <button 
+                                wire:click="openBudgetModal({{ $phase->phase_id }}, {{ $task->task_id }})"
+                                style="background:{{ $taskBudget ? '#1976d2' : '#43a047' }};
+                                    color:white; border:none; border-radius:8px;
+                                    padding:0.35rem 0.7rem; cursor:pointer; font-size:0.85rem;">
+                                {{ $taskBudget ? 'Edit Budget' : 'Add Budget' }}
+                            </button>
+                        </li>
+                    @endforeach
+                </ul>
+            @else
+                <p style="font-size:0.85rem; color:#777;">No tasks found.</p>
+            @endif
+        </div>
+    </div>
+@endforeach
+</div>
+@endif
+
+    @if ($showBudgetModal)
+    <div class="modal" aria-hidden="false">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3>{{ $selectedTaskId ? 'Task' : 'Phase' }} Budget</h3>
+            <button 
+                type="button" 
+                wire:click="$set('showBudgetModal', false)" 
+                style="background:none; border:none; color:white; font-size:1.2rem; cursor:pointer;">
+                ×
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <form wire:submit.prevent="saveBudget">
+                <label for="estimatedCost">Estimated Cost</label>
+                <input 
+                    id="estimatedCost"
+                    type="number"
+                    wire:model="estimatedCost"
+                    step="0.01"
+                    style="width:100%; padding:0.5rem; border:1px solid #ccc; border-radius:6px;"
+                >
+
+                <div class="modal-footer" style="margin-top:1rem;">
+                    <button 
+                        type="button" 
+                        wire:click="$set('showBudgetModal', false)" 
+                        style="background:#999; color:white; padding:0.4rem 0.8rem; border:none; border-radius:8px; cursor:pointer;">
+                        Cancel
+                    </button>
+                    <button 
+                        type="submit" 
+                        style="background:#43a047; color:white; padding:0.4rem 0.8rem; border:none; border-radius:8px; cursor:pointer;">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endif
+
 
     <!-- Add Budget Modal -->
     @if ($showAddBudgetModal)

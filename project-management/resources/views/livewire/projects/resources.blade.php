@@ -64,7 +64,6 @@ new #[Layout('components.layouts.app')] class extends Component
     $this->loadEmployees();
     $this->loadResources();
     $this->loadTasksForAllProjects();
-    $this->loadBudgets();
 
     // Loop through projects to get their members
     foreach ($this->projects as $p) {
@@ -204,22 +203,6 @@ public function deleteAllocation($allocationId)
 }
 
 
-    public function openViewResourcesModal()
-    {
-        // Fetch resources from DB (adjust query as needed)
-        $this->resources = DB::table('resources')->get();
-
-        // Show modal
-        $this->showViewResourcesModal = true;
-    }
-
-    public function closeViewResourcesModal()
-    {
-        $this->showViewResourcesModal = false;
-        $this->resources = [];
-    }
-
-
 public function getFilteredProjectsProperty()
 {
     $filter = (int) $this->selectedProjectFilter;
@@ -309,14 +292,16 @@ public function closeAllocationModal()
 
 public function saveAllocation()
 {
-    // 1. Insert allocation
-    DB::table('resource_allocations')->insert([
-        'task_id' => $this->selectedTaskId,
-        'resource_id' => $this->selectedResourceId,
-        'allocated_quantity' => $this->allocatedQuantity,
-        'allocation_date' => now(),
-        'cost' => $this->allocatedQuantity * DB::table('resources')->where('resource_id', $this->selectedResourceId)->value('unit_cost')
-    ]);
+    $unitCost = DB::table('resources')->where('resource_id', $this->selectedResourceId)->value('unit_cost');
+$totalCost = $this->allocatedQuantity * $unitCost;
+DB::table('resource_allocations')->insert([
+    'task_id' => $this->selectedTaskId,
+    'resource_id' => $this->selectedResourceId,
+    'allocated_quantity' => $this->allocatedQuantity,
+    'allocation_date' => now(),
+    'cost' => $totalCost,
+]);
+
 
     // 2. Update available quantity
     DB::table('resources')
@@ -365,66 +350,6 @@ public function updatedNewBudgetProjectId($projectId)
 
     $this->newBudgetPhaseId = null; // reset phase selection
 }
-
-
-    public function openAddBudgetModal()
-    {
-        $this->showAddBudgetModal = true;
-    }
-
-    public function openAddResourceModal()
-    {
-        $this->showAddResourceModal = true;
-    }
-
-    public function saveNewBudget()
-    {
-        if($this->newBudgetProjectId && $this->newBudgetPhaseId) {
-            DB::table('budgets')->insert([
-                'project_id' => $this->newBudgetProjectId,
-                'phase_id' => $this->newBudgetPhaseId,
-                'estimated_cost' => $this->newEstimatedCost,
-                'actual_cost' => 0,
-                'variance' => $this->newEstimatedCost
-            ]);
-            $this->loadBudgets();
-            $this->showAddBudgetModal = false;
-        }
-    }
-
-    public function saveNewResource()
-    {
-        if($this->newResourceName) {
-            DB::table('resources')->insert([
-                'resource_name' => $this->newResourceName,
-                'type' => $this->newResourceType,
-                'unit_cost' => $this->newResourceUnitCost,
-                'availability_quantity' => $this->newResourceQuantity,
-                'status' => 'Active',
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-            $this->loadResources();
-            $this->showAddResourceModal = false;
-        }
-    }
-
-    public function openBudgetModal()
-    {
-        $this->showBudgetModal = true;
-        $this->loadResources();
-        $this->loadBudgets();
-    }
-
-    public function closeBudgetModal()
-    {
-        $this->showBudgetModal = false;
-    }
-
-    public function loadBudgets()
-    {
-        $this->budgets = DB::table('budgets')->get()->toArray();
-    }
 
     public function loadProjects()
     {
@@ -476,9 +401,26 @@ public function updatedNewBudgetProjectId($projectId)
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
     <h4></h4>
     <div class="flex gap-2">
-        <button class="btn btn-primary" wire:click="openAddResourceModal">Add Resource</button>
-        <button class="btn btn-primary" wire:click="openViewResourcesModal">View Resources</button>
-    </div>
+    <a href="{{ route('projects.viewresources') }}"
+       style="
+           background-color: #22c55e;
+           color: #fff;
+           border: none;
+           border-radius: 8px;
+           padding: 10px 20px;
+           font-size: 1rem;
+           font-weight: 600;
+           cursor: pointer;
+           text-decoration: none;
+           transition: background 0.2s ease, transform 0.1s ease;
+           display: inline-block;
+       "
+       onmouseover="this.style.backgroundColor='#16a34a'; this.style.transform='translateY(-2px)'"
+       onmouseout="this.style.backgroundColor='#22c55e'; this.style.transform='none'">
+       👁 View
+    </a>
+</div>
+
 </div>
 
 @if($showViewResourcesModal)
@@ -946,7 +888,4 @@ $assignedIds = collect($projectTasks[$currentProjectId] ?? [])
         </div>
     </div>
 </div>
-
-
-
 </div>

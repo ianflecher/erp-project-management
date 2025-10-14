@@ -3,13 +3,19 @@
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 use Illuminate\Support\Facades\DB;
+use App\Http\Livewire\Volt\ProjectMembers;
 
-Volt::route('/', 'home')->name('home');
+Volt::route('/', 'dashboard')->name('dashboard');
 
+
+Volt::route('/projects/home', 'projects.home')->name('projects.home');
 Volt::route('/projects/resources', 'projects.resources')->name('projects.resources');
 Volt::route('/projects/budget', 'projects.budget')->name('projects.budget');
 Volt::route('/projects/progress', 'projects.progress')->name('projects.progress');
-
+Volt::route('/projects/members/{project_id}', 'projects.projectmembers')->name('projects.members');
+Volt::route('/projects/phase/{project_id}', 'projects.projectphase')->name('projects.phase');
+Volt::route('/projects/task/{phase_id}', 'projects.projecttask')->name('projects.task');
+Volt::route('/projects/viewresources', 'projects.viewresources')->name('projects.viewresources');
 
 use Carbon\Carbon;
 
