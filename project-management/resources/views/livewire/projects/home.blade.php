@@ -4,37 +4,17 @@ use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\DB;
 
-
-
 new #[Layout('components.layouts.app')] class extends Component
 {
-    // Projects
     public array $projects = [];
-    public ?string $successMessage = null;
-    public $projectToDelete = null;
-    
-
-public array $ganttTasks = []; // tasks for the Gantt chart
-
-    public $selectedProjectId;
     public array $managers = [];
+
+    public bool $showProjectModal = false;
     public bool $showEditModal = false;
     public bool $showDeleteModal = false;
-    public $editProject = [];
-    public $deleteId = null;
 
-    // Modals: project, phase, task, view
-    public bool $showProjectModal = false;
-    public bool $showPhaseModal = false;
-    public bool $showTaskModal = false;
-    public bool $showViewPhasesModal = false;
-    public bool $showViewTasksModal = false;
-    public bool $showEditTaskModal = false;
-    public $editingProject = null;
-
-    // Errors
-    public ?string $taskError = null;
-    public ?string $phaseError = null;
+    public ?int $projectToDelete = null;
+    public array $editProject = [];
 
     // Project fields
     public string $project_name = '';
@@ -45,114 +25,66 @@ public array $ganttTasks = []; // tasks for the Gantt chart
     public float $budget_total = 0.0;
     public int $project_manager_id = 1;
 
-    // Phase fields
-    public int $currentProjectId = 0; // used when opening phases modal / adding phase
-   public $ganttProjectId;
-
-    // Mount
     public function mount()
-{
-    $this->loadProjects();
-    $this->loadManagers();  // load managers into $this->managers
-}
-
-    public function deleteTask($taskId)
-{
-    if (!$taskId) return;
-
-    DB::table('tasks')->where('task_id', $taskId)->delete();
-
-    // Refresh tasks for the current phase
-    $this->viewTasks = DB::table('tasks')
-        ->where('phase_id', $this->viewTasksPhaseId)
-        ->get()
-        ->toArray();
-}
-
-
-public function openEditModal($projectId)
-{
-    $project = DB::table('projects')->where('project_id', $projectId)->first();
-
-    if ($project) {
-        $this->editProject = (array) $project; // convert object to array
-        $this->showEditModal = true;
+    {
+        $this->loadProjects();
+        $this->loadManagers();
+        foreach ($this->projects as $project) {
+        $this->updateProjectStatusFromPhases($project->project_id);
     }
-}
+    }
 
-public function closeEditModal()
+    /***************
+     * ✅ Auto Update Project Status from Phases
+     ***************/
+    public function updateProjectStatusFromPhases($projectId)
 {
-    $this->showEditModal = false;
-    $this->editProject = [];
-}
+    $phases = DB::table('project_phases')
+        ->where('project_id', $projectId)
+        ->pluck('status');
 
-public function updateProject()
-{
-    if (!isset($this->editProject['project_id'])) {
+    if ($phases->isEmpty()) {
+        DB::table('projects')
+            ->where('project_id', $projectId)
+            ->update(['status' => 'Planned', 'updated_at' => now()]);
         return;
     }
 
+    $total = $phases->count();
+    $completed = $phases->filter(fn($s) => $s === 'Completed')->count();
+    $inProgress = $phases->filter(fn($s) => $s === 'In Progress')->count();
+    $onHold = $phases->filter(fn($s) => $s === 'On Hold')->count();
+    $cancelled = $phases->filter(fn($s) => $s === 'Cancelled')->count();
+
+    if ($completed === $total) {
+        $newStatus = 'Completed';
+    } elseif ($cancelled === $total) {
+        $newStatus = 'Cancelled';
+    } elseif ($inProgress > 0) {
+        $newStatus = 'In Progress';
+    } elseif ($onHold > 0 && $completed === 0 && $inProgress === 0) {
+        $newStatus = 'On Hold';
+    } else {
+        $newStatus = 'Planned';
+    }
+
     DB::table('projects')
-        ->where('project_id', $this->editProject['project_id'])
+        ->where('project_id', $projectId)
         ->update([
-            'project_name'         => $this->editProject['project_name'] ?? '',
-            'description'          => $this->editProject['description'] ?? '',
-            'budget_total'         => $this->editProject['budget_total'] ?? 0,
-            'project_manager_id'   => $this->editProject['project_manager_id'] ?? null,
-            'start_date'           => $this->editProject['start_date'] ?? null,
-            'end_date'             => $this->editProject['end_date'] ?? null,
-            'updated_at'           => now(),
+            'status' => $newStatus,
+            'updated_at' => now(),
         ]);
 
-    $this->closeEditModal();
-    $this->loadProjects(); // refresh the table
+    $this->loadProjects();
 }
 
-
-public function confirmDelete($projectId)
-{
-    $this->projectToDelete = $projectId;
-    $this->showDeleteModal = true;
-}
-
-public function deleteProject()
-{
-    if ($this->projectToDelete) {
-        DB::table('projects')->where('project_id', $this->projectToDelete)->delete();
-
-        $this->showDeleteModal = false;
-
-        // Refresh your projects list
-        $this->projects = DB::table('projects')->get()->toArray();
-
-        $this->projectToDelete = null;
-    }
-}
-
-
-public function closeDeleteModal()
-{
-    $this->showDeleteModal = false;
-    $this->deleteId = null;
-}
-
-
-public function loadManagers()
-{
-    $this->managers = DB::table('hr_employees')
-        ->where('role', 'NOT LIKE', '%Manager%')
-        ->orderBy('full_name')
-        ->get()
-        ->toArray();
-}
 
 
     /***************
-     * Project CRUD
+     * ✅ Load Data
      ***************/
     public function loadProjects()
     {
-        // Load projects and manager name, plus a basic progress value stored in DB is optional.
         $this->projects = DB::table('projects')
             ->leftJoin('hr_employees', 'projects.project_manager_id', '=', 'hr_employees.employee_id')
             ->select('projects.*', 'hr_employees.full_name as manager_name')
@@ -161,16 +93,19 @@ public function loadManagers()
             ->toArray();
     }
 
-    public function openProjectModal()
+    public function loadManagers()
     {
-        $this->resetProjectFields();
-        $this->showProjectModal = true;
+        $this->managers = DB::table('hr_employees')
+            ->orderBy('full_name')
+            ->get()
+            ->toArray();
     }
 
-    public function closeProjectModal()
-    {
-        $this->showProjectModal = false;
-    }
+    /***************
+     * ✅ Create Project
+     ***************/
+    public function openProjectModal() { $this->resetProjectFields(); $this->showProjectModal = true; }
+    public function closeProjectModal() { $this->showProjectModal = false; }
 
     public function saveProject()
     {
@@ -188,8 +123,8 @@ public function loadManagers()
             'updated_at'         => now(),
         ]);
 
-        $this->loadProjects();
         $this->closeProjectModal();
+        $this->loadProjects();
     }
 
     public function resetProjectFields()
@@ -203,30 +138,76 @@ public function loadManagers()
         $this->project_manager_id = 1;
     }
 
-    public function updateProjectStatus(int $projectId, string $newStatus)
+    /***************
+     * ✅ Edit Project
+     ***************/
+    public function openEditModal($projectId)
     {
-        if ($newStatus === 'Done' && !$this->canMarkProjectDone($projectId)) {
-            $this->taskError = 'Cannot mark project as Done until all phases and tasks are completed.';
-            return;
+        $project = DB::table('projects')->where('project_id', $projectId)->first();
+        if ($project) {
+            $this->editProject = (array) $project;
+            $this->showEditModal = true;
         }
+    }
 
-        DB::table('projects')->where('project_id', $projectId)->update([
-            'status' => $newStatus,
-            'updated_at' => now(),
-        ]);
+    public function closeEditModal() { $this->showEditModal = false; $this->editProject = []; }
 
+    public function updateProject()
+    {
+        if (!isset($this->editProject['project_id'])) return;
+
+        DB::table('projects')
+            ->where('project_id', $this->editProject['project_id'])
+            ->update([
+                'project_name'       => $this->editProject['project_name'] ?? '',
+                'description'        => $this->editProject['description'] ?? '',
+                'budget_total'       => $this->editProject['budget_total'] ?? 0,
+                'project_manager_id' => $this->editProject['project_manager_id'] ?? null,
+                'start_date'         => $this->editProject['start_date'] ?? null,
+                'end_date'           => $this->editProject['end_date'] ?? null,
+                'updated_at'         => now(),
+            ]);
+
+        $this->closeEditModal();
         $this->loadProjects();
-        $this->taskError = null;
+    }
+
+    /***************
+     * ✅ Delete Project
+     ***************/
+    public function confirmDelete($projectId)
+    {
+        $this->projectToDelete = $projectId;
+        $this->showDeleteModal = true;
+    }
+
+    public function closeDeleteModal()
+    {
+        $this->showDeleteModal = false;
+        $this->projectToDelete = null;
+    }
+
+    public function deleteProject()
+    {
+        if ($this->projectToDelete) {
+            DB::table('projects')->where('project_id', $this->projectToDelete)->delete();
+            $this->closeDeleteModal();
+            $this->loadProjects();
+        }
     }
 };
-?>
 
-<div>
+?>
+<div class="phase-container">
 
     <!-- Add Project Button -->
-    <button type="button" wire:click="openProjectModal" class="btn btn-primary" style="margin-bottom:1rem;">+ Add Project</button>
+    <button type="button" wire:click="openProjectModal" class="phase-btn phase-btn-green" style="margin-bottom:1rem;">
+        + Add Project
+    </button>
 
-    <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
+
+    <div class="phase-table-container">
+    <table class="phase-table">
     <thead >
         <!-- Green header bar -->
         <tr>
@@ -265,48 +246,39 @@ public function loadManagers()
                 <td style="padding:8px;">{{ $p->manager_name ?? 'Unknown' }}</td>
 
                 <!-- Member -->
-                <td style="padding:8px;">
-    <a href="{{ route('projects.members', ['project_id' => $p->project_id]) }}"
-       style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
-                               padding:4px 8px;font-size:0.8rem;cursor:pointer;">
-       View
-    </a>
-</td>
+                <td>
+                            <a href="{{ route('projects.members', ['project_id' => $p->project_id]) }}" class="phase-btn phase-btn-green">
+                                View
+                            </a>
+                        </td>
 
                 <!-- Phases -->
-                <td style="padding:8px;">
-                    <a href="{{ route('projects.phase', ['project_id' => $p->project_id]) }}"
-       style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
-                               padding:4px 8px;font-size:0.8rem;cursor:pointer;">
-       View
-    </a>
-                </td>
+                <td>
+                            <a href="{{ route('projects.phase', ['project_id' => $p->project_id]) }}" class="phase-btn phase-btn-green">
+                                View
+                            </a>
+                        </td>
 
                 <!-- Gantt -->
-                <td style="padding:8px;">
-                    <button onclick="loadGantt({{ $p->project_id }})"
-                        style="background-color:#28a745;color:#fff;border:none;border-radius:5px;
-                               padding:4px 8px;font-size:0.8rem;cursor:pointer;">
-                        View
-                    </button>
-                </td>
+                <td>
+                            <button onclick="loadGantt({{ $p->project_id }})" class="phase-btn phase-btn-green">
+                                View
+                            </button>
+                        </td>
 
                 <!-- Actions -->
                 <td style="padding:8px;text-align:center;">
     <div style="display:flex;justify-content:center;align-items:center;gap:0.3rem;">
         <button wire:click="openEditModal({{ $p->project_id }})"
-            style="background-color:#007bff;color:#fff;border:none;border-radius:5px;
-                   padding:4px 8px;font-size:0.8rem;cursor:pointer;">
+            class="phase-btn phase-btn-yellow"  >
             Edit
         </button>
         <button wire:click="confirmDelete({{ $p->project_id }})"
-            style="background-color:#dc3545;color:#fff;border:none;border-radius:5px;
-                   padding:4px 8px;font-size:0.8rem;cursor:pointer;">
+            class="phase-btn phase-btn-red">
             Delete
         </button>
     </div>
 </td>
-
             </tr>
         @endforeach
     </tbody>
@@ -316,20 +288,6 @@ public function loadManagers()
 
 <div id="gantt_here" style="width:100%; height:500px;"></div>
 
-    
-@if ($successMessage)
-    <div 
-        x-data="{ show: true }"
-        x-show="show"
-        x-transition
-        x-init="setTimeout(() => {
-            show = false;
-            @this.set('successMessage', null)
-        }, 3000)" 
-        class="mb-4 px-4 py-3 rounded-lg bg-green-100 border border-green-300 text-green-800 shadow transition-all duration-500">
-        {{ $successMessage }}
-    </div>
-@endif
 {{-- ✅ Edit Project Modal --}}
 @if ($showEditModal)
     <div class="modal" aria-hidden="{{ $showEditModal ? 'false' : 'true' }}">
@@ -431,17 +389,17 @@ public function loadManagers()
 
                     <label>Budget:<input type="number" wire:model="budget_total" min="0" step="0.01" /></label>
                     <label>Project Manager:
-    <select wire:model="project_manager_id" required>
-    <option value="">-- Select Manager --</option>
-    @foreach ($managers as $manager)
-        <option value="{{ $manager->employee_id }}">{{ $manager->full_name }}</option>
-    @endforeach
-</select>
-</label>
-<button type="submit" class="btn btn-primary">Save Project</button>
-</form>
-</div>
-</div>
+                    <select wire:model="project_manager_id" required>
+                    <option value="">-- Select Manager --</option>
+                    @foreach ($managers as $manager)
+                        <option value="{{ $manager->employee_id }}">{{ $manager->full_name }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <button type="submit" class="btn btn-primary">Save Project</button>
+        </form>
+        </div>
+    </div>
 </div>
 
 

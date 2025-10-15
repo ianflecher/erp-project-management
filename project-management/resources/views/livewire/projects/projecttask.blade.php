@@ -41,22 +41,90 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->loadTasks();
     }
 
+    /**************************
+     * ✅ LOAD TASKS
+     **************************/
     public function loadTasks()
-{
-    $this->tasks = DB::table('tasks')
-        ->leftJoin('hr_employees', 'tasks.assigned_to', '=', 'hr_employees.employee_id')
-        ->select(
-            'tasks.*',
-            'hr_employees.full_name as assigned_name'
-        )
-        ->where('tasks.phase_id', $this->phase_id)
-        ->orderBy('tasks.start_date', 'asc')
-        ->get()
-        ->toArray();
-}
+    {
+        $this->tasks = DB::table('tasks')
+            ->leftJoin('hr_employees', 'tasks.assigned_to', '=', 'hr_employees.employee_id')
+            ->select(
+                'tasks.*',
+                'hr_employees.full_name as assigned_name'
+            )
+            ->where('tasks.phase_id', $this->phase_id)
+            ->orderBy('tasks.start_date', 'asc')
+            ->get()
+            ->toArray();
+    }
 
+    /**************************
+     * ✅ UPDATE PHASE STATUS
+     **************************/
+    public function updatePhaseStatus()
+    {
+        $tasks = DB::table('tasks')->where('phase_id', $this->phase_id)->get();
 
-    // === Modal controls ===
+        if ($tasks->isEmpty()) {
+            DB::table('project_phases')
+                ->where('phase_id', $this->phase_id)
+                ->update(['status' => 'Pending', 'updated_at' => now()]);
+            return;
+        }
+
+        $total = $tasks->count();
+        $completed = $tasks->where('status', 'Completed')->count();
+        $inProgress = $tasks->where('status', 'In Progress')->count();
+
+        $newStatus = 'Pending';
+        if ($completed === $total) {
+            $newStatus = 'Completed';
+        } elseif ($inProgress > 0 || $completed > 0) {
+            $newStatus = 'In Progress';
+        }
+
+        DB::table('project_phases')
+            ->where('phase_id', $this->phase_id)
+            ->update(['status' => $newStatus, 'updated_at' => now()]);
+    }
+
+    /**************************
+     * ✅ TOGGLE STATUS BUTTON
+     **************************/
+    public function toggleTaskStatus($task_id)
+    {
+        $task = DB::table('tasks')->where('task_id', $task_id)->first();
+        if (!$task) return;
+
+        $newStatus = 'Pending';
+        $newProgress = 0;
+
+        if ($task->status === 'Pending') {
+            $newStatus = 'In Progress';
+            $newProgress = 50;
+        } elseif ($task->status === 'In Progress') {
+            $newStatus = 'Completed';
+            $newProgress = 100;
+        } elseif ($task->status === 'Completed') {
+            $newStatus = 'Pending';
+            $newProgress = 0;
+        }
+
+        DB::table('tasks')
+            ->where('task_id', $task_id)
+            ->update([
+                'status' => $newStatus,
+                'progress_percentage' => $newProgress,
+                'updated_at' => now(),
+            ]);
+
+        $this->updatePhaseStatus();
+        $this->loadTasks();
+    }
+
+    /**************************
+     * ✅ TASK MODAL CONTROLS
+     **************************/
     public function openTaskModal(int $phase_id)
     {
         $this->resetTaskForm();
@@ -94,7 +162,9 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->task_description = '';
     }
 
-    // === Save / Update ===
+    /**************************
+     * ✅ SAVE / UPDATE TASK
+     **************************/
     public function saveTask()
     {
         if (!$this->task_name || !$this->task_start_date || !$this->task_end_date) {
@@ -129,11 +199,14 @@ new #[Layout('components.layouts.app')] class extends Component
             ]);
         }
 
+        $this->updatePhaseStatus();
         $this->loadTasks();
         $this->closeTaskModal();
     }
 
-    // === Delete Flow ===
+    /**************************
+     * ✅ DELETE TASK
+     **************************/
     public function confirmDeleteTask(int $task_id)
     {
         $task = DB::table('tasks')->where('task_id', $task_id)->first();
@@ -147,6 +220,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public function deleteTaskConfirmed()
     {
         DB::table('tasks')->where('task_id', $this->deleteTaskId)->delete();
+        $this->updatePhaseStatus();
         $this->loadTasks();
         $this->showDeleteModal = false;
     }
@@ -159,7 +233,6 @@ new #[Layout('components.layouts.app')] class extends Component
 ?>
 <!-- === Task Page === -->
 <div class="phase-container">
-
     <div class="phase-header">
         <h2>Tasks — {{ $phase_name }} ({{ $project_name }})</h2>
         <a href="javascript:history.back()" class="back-link">← Back</a>
@@ -182,7 +255,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         <th>End</th>
                         <th>Status</th>
                         <th>Progress</th>
-                        <th style="width:160px;">Actions</th>
+                        <th style="width:200px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -195,6 +268,9 @@ new #[Layout('components.layouts.app')] class extends Component
                             <td>{{ $task->status }}</td>
                             <td>{{ $task->progress_percentage }}%</td>
                             <td style="display:flex;gap:0.3rem;flex-wrap:wrap;">
+                                <button type="button" wire:click="toggleTaskStatus({{ $task->task_id }})" class="task-btn task-btn-yellow">
+                                    Next Status
+                                </button>
                                 <button type="button" wire:click="openEditTaskModal({{ $task->task_id }})" class="task-btn task-btn-yellow">Edit</button>
                                 <button type="button" wire:click="confirmDeleteTask({{ $task->task_id }})" class="task-btn task-btn-red">Delete</button>
                             </td>
@@ -207,7 +283,7 @@ new #[Layout('components.layouts.app')] class extends Component
         @endif
     </div>
 
-    <!-- === Add / Edit Task Modal === -->
+    <!-- === Add/Edit Modal === -->
     <div class="task-modal" style="display: {{ $showTaskModal ? 'flex' : 'none' }};">
         <div class="task-modal-dialog">
             <div class="task-modal-header">
@@ -252,9 +328,7 @@ new #[Layout('components.layouts.app')] class extends Component
     <!-- === Delete Confirmation Modal === -->
     <div class="task-modal" style="display: {{ $showDeleteModal ? 'flex' : 'none' }};">
         <div class="task-modal-dialog">
-            <div class="task-modal-header">
-                <h3>Confirm Delete</h3>
-            </div>
+            <div class="task-modal-header"><h3>Confirm Delete</h3></div>
             <div class="task-modal-body" style="text-align:center;">
                 <p>Are you sure you want to delete <strong>{{ $deleteTaskName }}</strong>?</p>
                 <div style="display:flex;justify-content:center;gap:0.5rem;margin-top:1rem;">
@@ -264,5 +338,4 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
         </div>
     </div>
-
 </div>

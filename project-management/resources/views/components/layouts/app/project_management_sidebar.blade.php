@@ -557,7 +557,7 @@ input:focus, select:focus {
 }
 /* --- Container --- */
 .phase-container {
-    max-width: 950px;
+    max-width: 1200px;
     margin: 2rem auto;
     background: #ffffff;
     border-radius: 16px;
@@ -602,6 +602,8 @@ input:focus, select:focus {
     border-radius: 10px;
     border: 1px solid #e5e7eb; /* gray border */
     background: #f9fafb; /* light gray bg */
+    
+     width: 100%;
 }
 
 .phase-table {
@@ -692,7 +694,7 @@ input:focus, select:focus {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 3px solid #2563eb;
+    border-bottom: 3px solid #22c55e;
     padding-bottom: 0.75rem;
     margin-bottom: 1.5rem;
 }
