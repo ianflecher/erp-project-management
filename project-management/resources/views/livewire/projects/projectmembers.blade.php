@@ -115,7 +115,7 @@ new #[Layout('components.layouts.app')] class extends Component
 <div class="member-container">
     <div class="member-header">
         <h2>Project Members — {{ $project_name }}</h2>
-        <a href="{{ route('projects.home') }}" style="color:#15803d; text-decoration:none; font-weight:600;">← Back to Projects</a>
+        <a href="{{ route('projects.home') }}" class="back-link">← Back to Projects</a>
     </div>
 
     <div class="member-list">

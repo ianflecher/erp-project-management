@@ -99,7 +99,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
 <div class="resources-container">
     <div class="task-header">
-        <a href="javascript:history.back()" class="task-back-btn">← Back</a>
+        <a href="javascript:history.back()" class="back-link">← Back</a>
     </div>
     <div class="resources-header">
         <h2>Resources Management</h2>

@@ -134,7 +134,7 @@ new #[Layout('components.layouts.app')] class extends Component
 <div class="phase-container">
     <div class="phase-header">
         <h2>Phases — {{ $project_name }}</h2>
-        <a href="{{ route('projects.home') }}" class="phase-back-btn">← Back to Projects</a>
+        <a href="{{ route('projects.home') }}" class="back-link">← Back to Projects</a>
     </div>
 
     <div style="margin-bottom: 1rem; text-align:right;">

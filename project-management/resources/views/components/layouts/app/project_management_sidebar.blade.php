@@ -1199,6 +1199,25 @@ input:focus, select:focus {
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
+.back-link {
+    display: inline-block;
+    padding: 0.5rem 1.2rem;
+    border-radius: 9999px; /* fully rounded pill shape */
+    background: transparent;
+    color: #15803d;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.1s ease;
+}
+
+.back-link:hover {
+    background-color: #16a34a; 
+    color: #fff; 
+    transform: scale(1.05);
+}
+
+
+
 
     </style>
 </head>

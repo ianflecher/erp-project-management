@@ -657,6 +657,11 @@ public function closeAllocationModal()
         'cost' => $totalCost,
     ]);
 
+    // 9️⃣ Update task-level actual cost in budgets
+$taskActualCost = DB::table('resource_allocations')
+    ->where('task_id', $task->task_id)
+    ->sum('cost');
+
     // 9️⃣ Update resource availability
     DB::table('resources')
         ->where('resource_id', $resource->resource_id)
@@ -670,6 +675,29 @@ public function closeAllocationModal()
     $this->totalCost = 0;
     $this->remainingBudget = 0;
     $this->showAllocationModal = false;
+
+    $taskBudget = DB::table('budgets')->where([
+    'project_id' => $project->project_id,
+    'phase_id' => $phase->phase_id,
+    'task_id' => $task->task_id,
+])->first();
+
+$estimated = $taskBudget->estimated_cost ?? 0;
+$variance = $estimated - $taskActualCost;
+
+DB::table('budgets')->updateOrInsert(
+    [
+        'project_id' => $project->project_id,
+        'phase_id' => $phase->phase_id,
+        'task_id' => $task->task_id,
+    ],
+    [
+        'actual_cost' => $taskActualCost,
+        'variance' => $variance,
+        'updated_at' => now(),
+    ]
+);
+
 
     session()->flash('success', 'Allocation saved successfully!');
 }
@@ -1061,7 +1089,7 @@ public function closeAllocationModal()
 
         <div class="resources-form-grid">
             <label>
-                Estimated Cost
+                Budget 
                 <input type="number" min="0" step="0.01" wire:model.defer="editingBudget.estimated_cost">
             </label>
 

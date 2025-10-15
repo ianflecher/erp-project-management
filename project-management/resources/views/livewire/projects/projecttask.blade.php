@@ -158,11 +158,11 @@ new #[Layout('components.layouts.app')] class extends Component
 }
 ?>
 <!-- === Task Page === -->
-<div class="task-container">
+<div class="phase-container">
 
-    <div class="task-header">
+    <div class="phase-header">
         <h2>Tasks — {{ $phase_name }} ({{ $project_name }})</h2>
-        <a href="javascript:history.back()" class="task-back-btn">← Back</a>
+        <a href="javascript:history.back()" class="back-link">← Back</a>
     </div>
 
     <div style="margin-bottom:1rem; text-align:right;">
@@ -171,9 +171,9 @@ new #[Layout('components.layouts.app')] class extends Component
         </button>
     </div>
 
-    <div class="task-table-container">
+    <div class="phase-table">
         @if(count($tasks))
-            <table class="task-table">
+            <table class="phase-table">
                 <thead>
                     <tr>
                         <th>Task Name</th>

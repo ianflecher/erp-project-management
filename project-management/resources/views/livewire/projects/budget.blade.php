@@ -113,12 +113,17 @@ $this->variance = null;
 
     public function getActualCostForPhase(int $phaseId): float
 {
-    return (float) DB::table('resource_allocations as ra')
-        ->join('tasks as t', 't.task_id', '=', 'ra.task_id')
-        ->where('t.phase_id', $phaseId)
-        ->sum('ra.cost');
-}
+    // Sum actual costs of all tasks in this phase
+    $tasks = DB::table('tasks')->where('phase_id', $phaseId)->pluck('task_id');
 
+    if ($tasks->isEmpty()) {
+        return 0;
+    }
+
+    return (float) DB::table('resource_allocations')
+        ->whereIn('task_id', $tasks)
+        ->sum('cost');
+}
 
     public function getActualCostForTask(int $taskId): float
 {
@@ -127,52 +132,71 @@ $this->variance = null;
         ->sum('cost');
 }
 
-
-
-
     public function saveBudget()
 {
     $this->validate([
         'estimatedCost' => 'required|numeric|min:0',
     ]);
 
+    // 1️⃣ Get parent limits
+    $phaseBudgetLimit = DB::table('budgets')
+        ->where('project_id', $this->selectedProjectId)
+        ->where('phase_id', $this->selectedPhaseId)
+        ->whereNull('task_id')
+        ->value('estimated_cost') ?? 0;
+
+    $projectBudgetLimit = DB::table('projects')
+        ->where('project_id', $this->selectedProjectId)
+        ->value('budget_total') ?? 0;
+
+    if ($this->selectedTaskId) {
+        // ✅ Task-level: cannot exceed phase budget
+        if ($this->estimatedCost > $phaseBudgetLimit) {
+            session()->flash('error', "Task estimated cost cannot exceed its phase budget (₱" . number_format($phaseBudgetLimit, 2) . ").");
+            return;
+        }
+    } else {
+        // ✅ Phase-level: cannot exceed project budget
+        if ($this->estimatedCost > $projectBudgetLimit) {
+            session()->flash('error', "Phase estimated cost cannot exceed project budget (₱" . number_format($projectBudgetLimit, 2) . ").");
+            return;
+        }
+    }
+
     DB::transaction(function () {
-        // ✅ 1. Compute actual cost (use task-based if applicable)
+        // 2️⃣ Compute actual cost
         $actualCost = $this->selectedTaskId
-    ? $this->getActualCostForTask($this->selectedTaskId)   // task-level
-    : $this->getActualCostForPhase($this->selectedPhaseId); // phase-level
+            ? $this->getActualCostForTask($this->selectedTaskId)
+            : $this->getActualCostForPhase($this->selectedPhaseId);
 
-
-        // ✅ 2. Compute variance
+        // 3️⃣ Compute variance
         $variance = (float)$this->estimatedCost - (float)$actualCost;
 
-        // ✅ 3. Insert or update the budget record (avoid duplicates)
+        // 4️⃣ Insert/update budget record
         DB::table('budgets')->updateOrInsert(
-    [
-        'project_id' => $this->selectedProjectId,
-        'phase_id'   => $this->selectedPhaseId,
-        'task_id'    => $this->selectedTaskId,
-    ],
-    [
-        'estimated_cost' => (float)$this->estimatedCost,
-        'actual_cost'    => (float)$actualCost,
-        'variance'       => $variance,
-        'updated_at'     => now(),
-    ]
-);
+        [
+            'project_id' => $this->selectedProjectId,
+            'phase_id'   => $this->selectedPhaseId,
+            'task_id'    => $this->selectedTaskId, // must be task ID for task budgets
+        ],
+        [
+            'estimated_cost' => (float)$this->estimatedCost,
+            'actual_cost'    => $this->selectedTaskId 
+                ? $this->getActualCostForTask($this->selectedTaskId) 
+                : $this->getActualCostForPhase($this->selectedPhaseId),
+            'variance'       => (float)$this->estimatedCost 
+                - ($this->selectedTaskId 
+                    ? $this->getActualCostForTask($this->selectedTaskId) 
+                    : $this->getActualCostForPhase($this->selectedPhaseId)),
+            'updated_at'     => now(),
+        ]
+    );
 
 
-        // ✅ 4. Create journal entry
+        // 5️⃣ Journal entry (same as before)
         $reference = 'BUD-' . strtoupper(uniqid());
-
-        $phaseName = DB::table('project_phases')
-            ->where('phase_id', $this->selectedPhaseId)
-            ->value('phase_name');
-
-        $projectName = DB::table('projects')
-            ->where('project_id', $this->selectedProjectId)
-            ->value('project_name');
-
+        $phaseName = DB::table('project_phases')->where('phase_id', $this->selectedPhaseId)->value('phase_name');
+        $projectName = DB::table('projects')->where('project_id', $this->selectedProjectId)->value('project_name');
         $taskName = $this->selectedTaskId
             ? DB::table('tasks')->where('task_id', $this->selectedTaskId)->value('task_name')
             : null;
@@ -193,14 +217,14 @@ $this->variance = null;
         ]);
     });
 
-    // ✅ 5. Refresh budget totals & close modal
+    // 6️⃣ Refresh totals & close modal
     $this->calculateBudgetTotals($this->selectedProjectId);
-
     $this->budgets = DB::table('budgets')->get()->toArray();
     $this->showAddBudgetModal = false;
     $this->showBudgetModal = false;
     session()->flash('success', 'Budget saved successfully!');
 }
+
 
 };
 ?>
@@ -325,18 +349,24 @@ $this->variance = null;
                                 <span style="font-size:0.8rem; color:#777;">({{ ucfirst($task->status) }})</span>
 
                                 @if ($taskBudget)
-                                    <p style="margin:0; font-size:0.85rem; color:#388e3c;">
-                                        💰 Est: ₱{{ number_format((float)$taskBudget->estimated_cost, 2) }}
-                                        | Act: ₱{{ number_format((float)$taskBudget->actual_cost, 2) }}
-                                        @if($budgetSource === 'phase')
-                                            <span style="font-size:0.75rem; color:#666;">(phase budget)</span>
-                                        @else
-                                            <span style="font-size:0.75rem; color:#666;">(task budget)</span>
-                                        @endif
-                                    </p>
-                                @else
-                                    <p style="margin:0; font-size:0.85rem; color:#777;">No budget set</p>
-                                @endif
+    @php
+        $taskActualCost = $taskBudget->task_id
+            ? $taskBudget->actual_cost // ✅ use task actual cost
+            : $taskBudget->actual_cost; // fallback for phase budget
+    @endphp
+    <p style="margin:0; font-size:0.85rem; color:#388e3c;">
+        💰 Est: ₱{{ number_format((float)$taskBudget->estimated_cost, 2) }}
+        | Act: ₱{{ number_format((float)$taskActualCost, 2) }}
+        @if($budgetSource === 'phase')
+            <span style="font-size:0.75rem; color:#666;">(phase budget)</span>
+        @else
+            <span style="font-size:0.75rem; color:#666;">(task budget)</span>
+        @endif
+    </p>
+@else
+    <p style="margin:0; font-size:0.85rem; color:#777;">No budget set</p>
+@endif
+
                             </div>
                         </li>
                     @endforeach
