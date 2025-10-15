@@ -22,10 +22,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public $editingAllocation = [];
     public $showEditResourceModal = false;
     public $editingResource;
-    
-
+    public $totalCost = 0;
+    public $allocatedQuantity = 0;
+    public $selectedResourceId = null;
+    public $resourceUnitCost = 0;
+    public $remainingBudget = 0;
+    public array $editingBudget = [];
+    public ?int $selectedTaskId = null;
     public ?int $selectedProjectFilter = null; // null means show all projects
-
 
     public ?int $task_assigned_to = null;
     public ?int $editTaskAssignedTo = null;
@@ -46,14 +50,9 @@ new #[Layout('components.layouts.app')] class extends Component
     public ?int $currentProjectId = null;
     public array $projectMembers = [];
 
-
-
     // Allocation Modal
     public bool $showAllocationModal = false;
-    public ?int $selectedTaskId = null;
     public ?int $selectedEmployeeId = null;
-    public ?int $selectedResourceId = null;
-    public float $allocatedQuantity = 0;
     public float $allocationCost = 0;
     public string $allocationType = 'Employee';
     public ?string $errorMessage = null;
@@ -64,7 +63,6 @@ new #[Layout('components.layouts.app')] class extends Component
     $this->loadEmployees();
     $this->loadResources();
     $this->loadTasksForAllProjects();
-    $this->loadBudgets();
 
     // Loop through projects to get their members
     foreach ($this->projects as $p) {
@@ -78,15 +76,195 @@ new #[Layout('components.layouts.app')] class extends Component
 
     }
 }
-
-    public function openEditResourceModal($resourceId)
+    // Open Add Budget Modal
+public function openAddBudgetModal($taskId)
 {
-    $resource = DB::table('resources')->where('resource_id', $resourceId)->first();
-    if ($resource) {
-        $this->editingResource = (array) $resource;
-        $this->showEditResourceModal = true;
+    $this->selectedTaskId = $taskId;
+    $this->editingBudget = [
+        'budget_id' => null,  // No budget yet
+        'task_id' => $taskId,
+        'estimated_cost' => 0,
+        'actual_cost' => 0,
+        'variance' => 0,
+    ];
+    $this->showBudgetModal = true;
+}
+
+// Open Edit Budget Modal
+public function openEditBudgetModal($budgetId)
+{
+    $budget = DB::table('budgets')->where('budget_id', $budgetId)->first();
+
+    if (!$budget) {
+        $this->addError('editingBudget.estimated_cost', 'Budget not found.');
+        return;
+    }
+
+    $this->editingBudget = (array) $budget; // budget_id will exist here
+    $this->showBudgetModal = true;
+}
+
+
+public function addBudget()
+{
+    // Fetch task with phase to get project_id
+    $task = DB::table('tasks as t')
+        ->join('project_phases as ph', 't.phase_id', '=', 'ph.phase_id')
+        ->select('t.*', 'ph.project_id')
+        ->where('t.task_id', $this->editingBudget['task_id'])
+        ->first();
+
+    if (!$task) {
+        $this->addError('editingBudget.estimated_cost', 'Cannot find project for this task.');
+        return;
+    }
+
+    $budgetId = DB::table('budgets')->insertGetId([
+        'task_id' => $task->task_id,
+        'phase_id' => $task->phase_id ?? 0,
+        'project_id' => $task->project_id,
+        'estimated_cost' => $this->editingBudget['estimated_cost'] ?? 0,
+        'actual_cost' => 0,
+        'variance' => 0,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $this->editingBudget['budget_id'] = $budgetId;
+    $this->showBudgetModal = false;
+    session()->flash('success', 'Budget added successfully!');
+}
+
+
+
+public function saveBudget()
+{
+    $this->validate([
+        'editingBudget.estimated_cost' => 'required|numeric|min:0',
+    ]);
+
+    // Keep actual_cost and variance intact
+    $this->editingBudget['variance'] = ($this->editingBudget['actual_cost'] ?? 0) - $this->editingBudget['estimated_cost'];
+
+    DB::table('budgets')
+        ->where('budget_id', $this->editingBudget['budget_id'])
+        ->update([
+            'estimated_cost' => $this->editingBudget['estimated_cost'],
+            'variance' => $this->editingBudget['variance'],
+            'updated_at' => now(),
+        ]);
+
+    $this->showBudgetModal = false;
+    $this->editingBudget = [];
+    session()->flash('success', 'Budget updated successfully!');
+}
+
+
+private function getProjectIdByTask($taskId)
+{
+    $task = DB::table('tasks')->where('task_id', $taskId)->first();
+    if (!$task) return null;
+
+    $phase = DB::table('project_phases')->where('phase_id', $task->phase_id)->first();
+    return $phase ? $phase->project_id : null;
+}
+
+
+private function getPhaseIdByTask($taskId)
+{
+    return DB::table('tasks')->where('task_id', $taskId)->value('phase_id');
+}
+
+
+    public function computeEditTotalCost()
+{
+    // 1️⃣ Check required fields
+    if (!isset($this->editingAllocation['allocated_quantity'], $this->editingAllocation['resource_id'], $this->editingAllocation['task_id'])) {
+        $this->editingAllocation['total_cost'] = 0;
+        $this->editingAllocation['remaining_budget'] = 0;
+        return;
+    }
+
+    // 2️⃣ Fetch resource
+    $resource = DB::table('resources')
+        ->where('resource_id', $this->editingAllocation['resource_id'])
+        ->first();
+
+    if (!$resource) {
+        $this->editingAllocation['total_cost'] = 0;
+        $this->editingAllocation['remaining_budget'] = 0;
+        return;
+    }
+
+    // 3️⃣ Calculate total cost
+    $this->editingAllocation['total_cost'] = $this->editingAllocation['allocated_quantity'] * $resource->unit_cost;
+
+    // 4️⃣ Fetch task → phase → project
+    $task = DB::table('tasks')->where('task_id', $this->editingAllocation['task_id'])->first();
+    if (!$task) {
+        $this->editingAllocation['remaining_budget'] = 0;
+        return;
+    }
+
+    $phase = DB::table('project_phases')->where('phase_id', $task->phase_id)->first();
+    if (!$phase) {
+        $this->editingAllocation['remaining_budget'] = 0;
+        return;
+    }
+
+    $project = DB::table('projects')->where('project_id', $phase->project_id)->first();
+    if (!$project) {
+        $this->editingAllocation['remaining_budget'] = 0;
+        return;
+    }
+
+    // 5️⃣ Calculate current spent budget
+    $currentSpent = DB::table('resource_allocations as ra')
+        ->join('tasks as t', 'ra.task_id', '=', 't.task_id')
+        ->join('project_phases as pp', 't.phase_id', '=', 'pp.phase_id')
+        ->where('pp.project_id', $project->project_id)
+        ->sum('ra.cost');
+
+    // 6️⃣ Subtract current allocation cost so we don't double-count
+    $originalQty = $this->editingAllocation['original_quantity'] ?? 0;
+    $currentSpent -= $originalQty * $resource->unit_cost;
+
+    // 7️⃣ Set remaining budget
+    $this->editingAllocation['remaining_budget'] = $project->budget_total - $currentSpent;
+}
+
+
+   public function updatedAllocatedQuantity($value)
+{
+    $this->computeTotalCost();
+}
+
+    public function updatedSelectedResourceId($value)
+{
+    if ($value) {
+        $resource = collect($this->resources)->firstWhere('resource_id', $value);
+        $this->resourceUnitCost = $resource ? $resource->unit_cost : 0;
+    } else {
+        $this->resourceUnitCost = 0;
+    }
+
+    $this->computeTotalCost();
+}
+
+public function computeTotalCost()
+{
+    if ($this->selectedResourceId && is_numeric($this->allocatedQuantity)) {
+        $unitCost = DB::table('resources')
+            ->where('resource_id', $this->selectedResourceId)
+            ->value('unit_cost');
+
+        $this->totalCost = $unitCost * $this->allocatedQuantity;
+    } else {
+        $this->totalCost = 0;
     }
 }
+
+
 
 public function closeEditResourceModal()
 {
@@ -121,62 +299,143 @@ public function deleteResource($resourceId)
 
     public function openEditAllocationModal($allocationId)
 {
-    $allocation = DB::table('resource_allocations')
-        ->where('allocation_id', $allocationId)
+    $allocation = DB::table('resource_allocations as ra')
+        ->join('resources as r', 'ra.resource_id', '=', 'r.resource_id')
+        ->select('ra.*', 'r.resource_name', 'r.unit_cost', 'r.type')
+        ->where('ra.allocation_id', $allocationId)
         ->first();
 
-    if ($allocation) {
-        $this->editingAllocation = (array) $allocation;
-        $this->showEditAllocationModal = true;
+    if (!$allocation) {
+        $this->addError('editingAllocation', 'Allocation not found.');
+        return;
     }
+
+
+    $taskBudget = DB::table('budgets')
+        ->where('task_id', $allocation->task_id)
+        ->first();
+
+    // Compute total allocations for this task excluding the current allocation
+    $allocatedSumExcludingCurrent = DB::table('resource_allocations')
+        ->where('task_id', $allocation->task_id)
+        ->where('allocation_id', '!=', $allocationId)
+        ->sum('cost');
+
+    $this->editingAllocation = [
+        'allocation_id' => $allocation->allocation_id,
+        'resource_id' => $allocation->resource_id,
+        'resource_name' => $allocation->resource_name,
+        'unit_cost' => $allocation->unit_cost,
+        'type' => $allocation->type,
+        'task_id' => $allocation->task_id,
+        'allocated_quantity' => $allocation->allocated_quantity,
+        'total_cost' => $allocation->allocated_quantity * $allocation->unit_cost,
+        'remaining_budget' => $taskBudget 
+            ? max(0, $taskBudget->estimated_cost - $allocatedSumExcludingCurrent) 
+            : 0,
+    ];
+
+
+    $this->showEditAllocationModal = true;
 }
 
-public function updateAllocation()
+
+
+    public function updateAllocation()
 {
+    // 1️⃣ Fetch allocation
     $allocation = DB::table('resource_allocations')
         ->where('allocation_id', $this->editingAllocation['allocation_id'])
         ->first();
 
-    if (!$allocation) return;
+    if (!$allocation) {
+        $this->addError('editingAllocation.allocated_quantity', "Allocation not found.");
+        return;
+    }
 
-    $resource = DB::table('resources')
-        ->where('resource_id', $allocation->resource_id)
-        ->first();
+    // 2️⃣ Fetch resource
+    $resource = DB::table('resources')->where('resource_id', $allocation->resource_id)->first();
+    if (!$resource) {
+        $this->addError('editingAllocation.allocated_quantity', "Resource not found.");
+        return;
+    }
 
+    // 3️⃣ Fetch task → phase → project
+    $task = DB::table('tasks')->where('task_id', $allocation->task_id)->first();
+    if (!$task) {
+        $this->addError('editingAllocation.allocated_quantity', "Task not found.");
+        return;
+    }
+
+    $phase = DB::table('project_phases')->where('phase_id', $task->phase_id)->first();
+    if (!$phase) {
+        $this->addError('editingAllocation.allocated_quantity', "Phase not found.");
+        return;
+    }
+
+    $project = DB::table('projects')->where('project_id', $phase->project_id)->first();
+    if (!$project) {
+        $this->addError('editingAllocation.allocated_quantity', "Project not found.");
+        return;
+    }
+
+    // 4️⃣ Calculate differences
     $oldQty = $allocation->allocated_quantity;
     $newQty = $this->editingAllocation['allocated_quantity'];
+    $diffQty = $newQty - $oldQty;
+    $diffCost = $diffQty * $resource->unit_cost;
 
-    $diff = $newQty - $oldQty;
+    // 5️⃣ Check stock availability
+    if ($diffQty > $resource->availability_quantity) {
+        $this->addError('editingAllocation.allocated_quantity', "Insufficient stock. Available: {$resource->availability_quantity}");
+        return;
+    }
 
-    if ($diff > $resource->availability_quantity) {
-    $this->addError('editingAllocation.allocated_quantity', "Stocks We Have   ({$resource->availability_quantity})");
+    // 6️⃣ Calculate remaining budget
+    $currentSpent = DB::table('resource_allocations as ra')
+        ->join('tasks as t', 'ra.task_id', '=', 't.task_id')
+        ->join('project_phases as pp', 't.phase_id', '=', 'pp.phase_id')
+        ->where('pp.project_id', $project->project_id)
+        ->sum('ra.cost');
 
-    // Dispatch browser event to auto-clear error
-    $this->dispatchBrowserEvent('clear-allocation-error', ['field' => 'editingAllocation.allocated_quantity']);
-    return;
-}
+    // Subtract the current allocation's cost so we don't double-count
+    $currentSpent -= $allocation->cost;
 
+    $remainingBudget = $project->budget_total - $currentSpent;
 
-    // Update allocation
+    if (($newQty * $resource->unit_cost) > $remainingBudget) {
+        $this->addError('editingAllocation.allocated_quantity', 
+            "Cannot update. Remaining project budget: ₱ " . number_format($remainingBudget, 2)
+        );
+        return;
+    }
+
+    // 7️⃣ Update allocation
     DB::table('resource_allocations')
         ->where('allocation_id', $allocation->allocation_id)
         ->update([
             'allocated_quantity' => $newQty,
+            'cost' => $newQty * $resource->unit_cost,
             'updated_at' => now(),
         ]);
 
-    // Update resource availability
+    // 8️⃣ Update resource availability
     DB::table('resources')
         ->where('resource_id', $resource->resource_id)
         ->update([
-            'availability_quantity' => $resource->availability_quantity - $diff,
+            'availability_quantity' => $resource->availability_quantity - $diffQty,
         ]);
 
+    // 9️⃣ Reset modal & refresh
     $this->showEditAllocationModal = false;
     $this->editingAllocation = [];
-    $this->resetValidation(); // Clear error
+    $this->resetValidation();
     $this->loadTasksForAllProjects();
+
+    session()->flash('success', 'Allocation updated successfully!');
 }
+
+
 
 
 
@@ -202,22 +461,6 @@ public function deleteAllocation($allocationId)
     // Reload tasks/resources
     $this->loadTasksForAllProjects();
 }
-
-
-    public function openViewResourcesModal()
-    {
-        // Fetch resources from DB (adjust query as needed)
-        $this->resources = DB::table('resources')->get();
-
-        // Show modal
-        $this->showViewResourcesModal = true;
-    }
-
-    public function closeViewResourcesModal()
-    {
-        $this->showViewResourcesModal = false;
-        $this->resources = [];
-    }
 
 
 public function getFilteredProjectsProperty()
@@ -289,15 +532,50 @@ public function assignMember()
         ->sum('ra.cost');
 }
 
-
-    public function openAllocationModal($taskId)
+public function openAllocationModal($taskId)
 {
-    $this->resources = DB::table('resources')->get();
     $this->selectedTaskId = $taskId;
-    $this->allocatedQuantity = 0;
+
+    // Fetch task
+    $task = DB::table('tasks')->where('task_id', $taskId)->first();
+    if (!$task) return;
+
+    // Fetch phase
+    $phase = DB::table('project_phases')->where('phase_id', $task->phase_id)->first();
+    if (!$phase) return;
+
+    // Fetch project
+    $project = DB::table('projects')->where('project_id', $phase->project_id)->first();
+    if (!$project) return;
+
+    // Compute remaining budget
+    $currentSpent = DB::table('resource_allocations as ra')
+        ->join('tasks as t', 'ra.task_id', '=', 't.task_id')
+        ->join('project_phases as pp', 't.phase_id', '=', 'pp.phase_id')
+        ->where('pp.project_id', $project->project_id)
+        ->sum('ra.cost');
+
+     $taskBudget = DB::table('budgets')
+        ->where('task_id', $task->task_id)
+        ->first();
+
+    // Compute total allocated for this task
+    $allocatedSumForTask = DB::table('resource_allocations')
+        ->where('task_id', $task->task_id)
+        ->sum('cost');
+
+    // Remaining budget is task-level estimated minus already allocated
+    $this->remainingBudget = $taskBudget 
+        ? max(0, $taskBudget->estimated_cost - $allocatedSumForTask) 
+        : 0;
+
+    // Reset fields
     $this->selectedResourceId = null;
+    $this->allocatedQuantity = 0;
+    $this->totalCost = 0;
     $this->showAllocationModal = true;
 }
+
 
 public function closeAllocationModal()
 {
@@ -307,51 +585,120 @@ public function closeAllocationModal()
     $this->allocatedQuantity = 0;
 }
 
-public function saveAllocation()
+    public function saveAllocation()
 {
-    // 1. Insert allocation
+    // 1️⃣ Fetch resource
+    $resource = DB::table('resources')
+        ->where('resource_id', $this->selectedResourceId)
+        ->first();
+
+    if (!$resource) {
+        $this->addError('allocatedQuantity', 'Resource not found.');
+        return;
+    }
+
+    // 2️⃣ Fetch task
+    $task = DB::table('tasks')->where('task_id', $this->selectedTaskId)->first();
+    if (!$task) {
+        $this->addError('allocatedQuantity', 'Task not found.');
+        return;
+    }
+
+    // 3️⃣ Fetch phase
+    $phase = DB::table('project_phases')->where('phase_id', $task->phase_id)->first();
+    if (!$phase) {
+        $this->addError('allocatedQuantity', 'Project phase not found.');
+        return;
+    }
+
+    // 4️⃣ Fetch project
+    $project = DB::table('projects')->where('project_id', $phase->project_id)->first();
+    if (!$project) {
+        $this->addError('allocatedQuantity', 'Project not found.');
+        return;
+    }
+
+    // 5️⃣ Compute total cost
+    $totalCost = $this->allocatedQuantity * $resource->unit_cost;
+
+    // 6️⃣ Check stock
+    if ($this->allocatedQuantity > $resource->availability_quantity) {
+        $this->addError('allocatedQuantity', "Insufficient stock. Available: {$resource->availability_quantity}");
+        return;
+    }
+
+    // 7️⃣ Compute current spent & remaining budget
+    $currentSpent = DB::table('resource_allocations as ra')
+        ->join('tasks as t', 'ra.task_id', '=', 't.task_id')
+        ->join('project_phases as pp', 't.phase_id', '=', 'pp.phase_id')
+        ->where('pp.project_id', $project->project_id)
+        ->sum('ra.cost');
+
+    $remainingBudget = $project->budget_total - $currentSpent;
+
+    if ($totalCost > $remainingBudget) {
+        $this->addError('allocatedQuantity', 
+            "Cannot allocate. Remaining project budget: ₱ " . number_format($remainingBudget, 2)
+        );
+        return;
+    }
+
+    // 8️⃣ Insert allocation
     DB::table('resource_allocations')->insert([
-        'task_id' => $this->selectedTaskId,
-        'resource_id' => $this->selectedResourceId,
+        'task_id' => $task->task_id,
+        'resource_id' => $resource->resource_id,
         'allocated_quantity' => $this->allocatedQuantity,
         'allocation_date' => now(),
-        'cost' => $this->allocatedQuantity * DB::table('resources')->where('resource_id', $this->selectedResourceId)->value('unit_cost')
+        'cost' => $totalCost,
     ]);
 
-    // 2. Update available quantity
+    // 9️⃣ Update task-level actual cost in budgets
+$taskActualCost = DB::table('resource_allocations')
+    ->where('task_id', $task->task_id)
+    ->sum('cost');
+
+    // 9️⃣ Update resource availability
     DB::table('resources')
-        ->where('resource_id', $this->selectedResourceId)
+        ->where('resource_id', $resource->resource_id)
         ->decrement('availability_quantity', $this->allocatedQuantity);
 
-    // 3. Reload resources if needed
+    // 🔟 Reset modal & fields
     $this->loadResources();
-
-    // Reset modal fields
     $this->selectedTaskId = null;
     $this->selectedResourceId = null;
     $this->allocatedQuantity = 0;
+    $this->totalCost = 0;
+    $this->remainingBudget = 0;
     $this->showAllocationModal = false;
+
+    $taskBudget = DB::table('budgets')->where([
+    'project_id' => $project->project_id,
+    'phase_id' => $phase->phase_id,
+    'task_id' => $task->task_id,
+])->first();
+
+$estimated = $taskBudget->estimated_cost ?? 0;
+$variance = $estimated - $taskActualCost;
+
+DB::table('budgets')->updateOrInsert(
+    [
+        'project_id' => $project->project_id,
+        'phase_id' => $phase->phase_id,
+        'task_id' => $task->task_id,
+    ],
+    [
+        'actual_cost' => $taskActualCost,
+        'variance' => $variance,
+        'updated_at' => now(),
+    ]
+);
+
+
+    session()->flash('success', 'Allocation saved successfully!');
 }
-
-    public function loadPhasesForProject($projectId)
-{
-    $projectId = (int) $projectId; // ensure integer
-    if ($projectId > 0) {
-        $this->phases = DB::table('project_phases')
-            ->where('project_id', $projectId)
-            ->select('phase_id', 'phase_name')
-            ->get()
-            ->toArray();
-    } else {
-        $this->phases = [];
-    }
-
-    $this->newBudgetPhaseId = null; // reset selection
-}
-
 
     // Automatically called when newBudgetProjectId changes
-public function updatedNewBudgetProjectId($projectId)
+    public function updatedNewBudgetProjectId($projectId)
 {
     if ($projectId) {
         $this->phases = DB::table('project_phases')
@@ -365,66 +712,6 @@ public function updatedNewBudgetProjectId($projectId)
 
     $this->newBudgetPhaseId = null; // reset phase selection
 }
-
-
-    public function openAddBudgetModal()
-    {
-        $this->showAddBudgetModal = true;
-    }
-
-    public function openAddResourceModal()
-    {
-        $this->showAddResourceModal = true;
-    }
-
-    public function saveNewBudget()
-    {
-        if($this->newBudgetProjectId && $this->newBudgetPhaseId) {
-            DB::table('budgets')->insert([
-                'project_id' => $this->newBudgetProjectId,
-                'phase_id' => $this->newBudgetPhaseId,
-                'estimated_cost' => $this->newEstimatedCost,
-                'actual_cost' => 0,
-                'variance' => $this->newEstimatedCost
-            ]);
-            $this->loadBudgets();
-            $this->showAddBudgetModal = false;
-        }
-    }
-
-    public function saveNewResource()
-    {
-        if($this->newResourceName) {
-            DB::table('resources')->insert([
-                'resource_name' => $this->newResourceName,
-                'type' => $this->newResourceType,
-                'unit_cost' => $this->newResourceUnitCost,
-                'availability_quantity' => $this->newResourceQuantity,
-                'status' => 'Active',
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-            $this->loadResources();
-            $this->showAddResourceModal = false;
-        }
-    }
-
-    public function openBudgetModal()
-    {
-        $this->showBudgetModal = true;
-        $this->loadResources();
-        $this->loadBudgets();
-    }
-
-    public function closeBudgetModal()
-    {
-        $this->showBudgetModal = false;
-    }
-
-    public function loadBudgets()
-    {
-        $this->budgets = DB::table('budgets')->get()->toArray();
-    }
 
     public function loadProjects()
     {
@@ -476,9 +763,26 @@ public function updatedNewBudgetProjectId($projectId)
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
     <h4></h4>
     <div class="flex gap-2">
-        <button class="btn btn-primary" wire:click="openAddResourceModal">Add Resource</button>
-        <button class="btn btn-primary" wire:click="openViewResourcesModal">View Resources</button>
-    </div>
+    <a href="{{ route('projects.viewresources') }}"
+       style="
+           background-color: #22c55e;
+           color: #fff;
+           border: none;
+           border-radius: 8px;
+           padding: 10px 20px;
+           font-size: 1rem;
+           font-weight: 600;
+           cursor: pointer;
+           text-decoration: none;
+           transition: background 0.2s ease, transform 0.1s ease;
+           display: inline-block;
+       "
+       onmouseover="this.style.backgroundColor='#16a34a'; this.style.transform='translateY(-2px)'"
+       onmouseout="this.style.backgroundColor='#22c55e'; this.style.transform='none'">
+       👁 View
+    </a>
+</div>
+
 </div>
 
 @if($showViewResourcesModal)
@@ -537,87 +841,77 @@ public function updatedNewBudgetProjectId($projectId)
 </div>
 @endif
 
-@if($showEditResourceModal)
-<div class="modal" aria-hidden="false">
-    <div class="modal-dialog w-full max-w-md bg-white rounded-lg shadow-lg">
-        <div class="modal-header flex justify-between items-center px-4 py-3 bg-yellow-600 text-white">
-            <h3>Edit Resource</h3>
-            <button wire:click="$set('showEditResourceModal', false)" class="text-2xl">&times;</button>
+<!-- Edit Allocation Modal -->
+@if($showEditAllocationModal)
+<div class="resources-modal" style="display:flex;">
+    <div class="resources-modal-box">
+        <!-- Header -->
+        <div class="resources-modal-header">
+            <h3>Edit Resource Allocation</h3>
+            <button class="resources-close-btn" wire:click="$set('showEditAllocationModal', false)">&times;</button>
         </div>
-        <div class="modal-body p-4 space-y-2">
-            <label>Name
-                <input type="text" wire:model="editingResource.resource_name" class="w-full border rounded px-2 py-1">
+
+        <!-- Body -->
+        <div class="resources-form-grid">
+            <!-- Resource (readonly) -->
+            <label>
+                Resource
+                <input type="text" readonly value="{{ $editingAllocation['resource_name'] ?? '' }}">
             </label>
-            <label>Type
-                <input type="text" wire:model="editingResource.type" class="w-full border rounded px-2 py-1">
+
+            <!-- Quantity -->
+            <label>
+                Quantity
+                <input type="number" min="0" step="0.01"
+                       wire:model.debounce.200ms="editingAllocation.allocated_quantity"
+                       wire:keyup="computeEditTotalCost"
+                       class="border rounded-md px-3 py-2 w-full" />
             </label>
-            <label>Unit Cost
-                <input type="number" min="0" step="0.01" wire:model="editingResource.unit_cost" class="w-full border rounded px-2 py-1">
+
+            <!-- Total Cost -->
+            <label>
+                Total Cost
+                <input type="text" readonly value="₱ {{ number_format($editingAllocation['total_cost'] ?? 0, 2) }}">
             </label>
-            <label>Availability
-                <input type="number" min="0" step="0.01" wire:model="editingResource.availability_quantity" class="w-full border rounded px-2 py-1">
+
+            <!-- Remaining Budget -->
+            <label>
+                Remaining Budget
+                <input type="text" readonly value="₱ {{ number_format($editingAllocation['remaining_budget'] ?? 0, 2) }}">
             </label>
-            <label>Status
-                <input type="text" wire:model="editingResource.status" class="w-full border rounded px-2 py-1">
-            </label>
+
+            <!-- Error Messages -->
+            @if(isset($editingAllocation['total_cost']) && $editingAllocation['total_cost'] > ($editingAllocation['remaining_budget'] ?? 0))
+                <p class="text-red-600 text-sm mt-1">
+                    Error: Allocation exceeds remaining budget!
+                </p>
+            @endif
+
+            @error('editingAllocation.allocated_quantity')
+                <p class="text-red-600 text-sm mt-1">{{ $message }}</p>
+            @enderror
         </div>
-        <div class="modal-footer flex justify-end gap-2 px-4 py-3 bg-gray-100">
-            <button class="btn btn-secondary px-4 py-1 rounded" wire:click="$set('showEditResourceModal', false)">Cancel</button>
-            <button class="btn btn-primary px-4 py-1 rounded" wire:click="updateResource">Save</button>
+
+        <!-- Footer -->
+        <div class="resources-modal-actions">
+            <button class="btn btn-success px-3 py-1 rounded-md text-white hover:bg-green-600 transition"
+                    wire:click="updateAllocation">
+                Save
+            </button>
+            <button class="resources-btn-gray"
+                    wire:click="$set('showEditAllocationModal', false)">
+                Cancel
+            </button>
         </div>
     </div>
 </div>
 @endif
 
-
-
-   @if($showEditAllocationModal)
-    <div class="modal" aria-hidden="false">
-        <div class="modal-dialog">
-            <!-- Modal Header -->
-            <div class="modal-header">
-                <h3>Edit Resource Allocation</h3>
-                <button wire:click="$set('showEditAllocationModal', false)" 
-                        style="background:none;border:none;color:#fff;font-size:1.2rem;">
-                    &times;
-                </button>
-            </div>
-
-            <!-- Modal Body -->
-            <div class="modal-body">
-
-                <div x-data 
-     x-on:clear-allocation-error.window="
-         const field = $event.detail.field;
-         setTimeout(() => {
-             @this.setError(field, null);
-         }, 3000);
-     ">
-    <label for="allocatedQuantity">Allocated Quantity</label>
-    <input id="allocatedQuantity" type="number" min="0" step="0.01" 
-           wire:model="editingAllocation.allocated_quantity" 
-           class="w-full border px-2 py-1 rounded">
-
-    @error('editingAllocation.allocated_quantity')
-        <p class="text-red-500 text-sm mt-1">{{ $message }}</p>
-    @enderror
-</div>
-
-            </div>
-
-            <!-- Modal Footer -->
-            <div class="modal-footer">
-                <button class="btn btn-secondary" wire:click="$set('showEditAllocationModal', false)">Cancel</button>
-                <button class="btn btn-primary" wire:click="updateAllocation">Save</button>
-            </div>
-        </div>
-    </div>
-@endif
 
     <!-- Projects Table -->
-    <div class="data-table">
-    <div class="table-header">Projects & Tasks</div>
-    <table>
+    <div class="budgetresource-table-container">
+    <div class="budgetresource-table-header">Projects & Tasks</div>
+    <table class="budgetresource-table">
         <thead>
             <tr>
                 <th>Project</th>
@@ -628,292 +922,190 @@ public function updatedNewBudgetProjectId($projectId)
                 <th>Actions</th>
             </tr>
         </thead>
-      <tbody>
-@foreach($this->filteredProjects as $p)
-    @php
-        $tasks = $projectTasks[$p->project_id] ?? [];
-    @endphp
+        <tbody>
+        @foreach($this->filteredProjects as $p)
+            @php $tasks = $projectTasks[$p->project_id] ?? []; @endphp
+            @if(count($tasks) > 0)
+                @foreach($tasks as $t)
+                    <tr>
+                        <td>{{ $p->project_name }}</td>
+                        <td>{{ $t->phase_name }}</td>
+                        <td>{{ $t->task_name }}</td>
+                        <td>
+                            @php
+                                $assignedIds = explode(',', $t->assigned_to ?? '');
+                                $assignedEmployees = collect($employees)
+                                    ->whereIn('employee_id', $assignedIds)
+                                    ->pluck('full_name')
+                                    ->toArray();
+                            @endphp
+                            @if(count($assignedEmployees) > 0)
+                                {{ implode(', ', $assignedEmployees) }}
+                            @else
+                                Unassigned
+                            @endif
+                        </td>
+                        <td>
+                            @php
+                                $allocs = DB::table('resource_allocations')
+                                    ->join('resources', 'resources.resource_id', '=', 'resource_allocations.resource_id')
+                                    ->where('resource_allocations.task_id', $t->task_id)
+                                    ->select(
+                                        'resource_allocations.allocation_id',
+                                        'resources.resource_name',
+                                        'resources.type',
+                                        'resource_allocations.allocated_quantity'
+                                    )
+                                    ->get();
+                            @endphp
 
-    @if(count($tasks) > 0)
-        @foreach($tasks as $t)
-            <tr>
-                <td>{{ $p->project_name }}</td>
-                <td>{{ $t->phase_name }}</td>
-                <td>{{ $t->task_name }}</td>
-                <td>
-@php
-    $assignedIds = explode(',', $t->assigned_to ?? '');
-    $assignedEmployees = collect($employees)
-        ->whereIn('employee_id', $assignedIds)
-        ->pluck('full_name')
-        ->toArray();
-@endphp
+                            @foreach($allocs as $a)
+                                @php
+                                    $unit = match($a->type) {
+                                        'Food' => 'kg',
+                                        'Equipment' => 'pcs',
+                                        default => 'pcs',
+                                    };
+                                @endphp
+                                <div class="budgetresource-alloc-row">
+                                    <span>{{ $a->resource_name }} {{ rtrim(rtrim(number_format($a->allocated_quantity, 2), '0'), '.') }} {{ $unit }}</span>
+                                    <span class="budgetresource-actions">
+                                        <button class="budgetresource-btn-warning"
+                                                wire:click="openEditAllocationModal({{ $a->allocation_id }})">Edit</button>
+                                        <button class="budgetresource-btn-danger"
+                                                onclick="if(confirm('Delete this allocation?')) @this.call('deleteAllocation', {{ $a->allocation_id }})">Delete</button>
+                                    </span>
+                                </div>
+                            @endforeach
+                            @if(count($allocs) === 0)
+                                <span class="budgetresource-no-alloc">No resources allocated</span>
+                            @endif
+                        </td>
+                        <td class="budgetresource-actions-cell">
+                            <button class="budgetresource-btn-success"
+                                    wire:click="openAllocationModal({{ $t->task_id }})">Allocate</button>
+                            <button class="budgetresource-btn-primary"
+                                    wire:click="openAssignMemberModal({{ $t->task_id }}, {{ $p->project_id }})">Assign</button>
 
-@if(count($assignedEmployees) > 0)
-    {{ implode(', ', $assignedEmployees) }}
-@else
-    Unassigned
-@endif
-</td>
-
-              <td>
-    @php
-        $allocs = DB::table('resource_allocations')
-            ->join('resources', 'resources.resource_id', '=', 'resource_allocations.resource_id')
-            ->where('resource_allocations.task_id', $t->task_id)
-            ->select(
-                'resource_allocations.allocation_id',
-                'resources.resource_name',
-                'resources.type',
-                'resource_allocations.allocated_quantity'
-            )
-            ->get();
-    @endphp
-
-    @foreach($allocs as $a)
-        @php
-            $unit = match($a->type) {
-                'Food' => 'kg',
-                'Equipment' => 'pcs',
-                default => 'pcs',
-            };
-        @endphp
-
-        <div class="flex items-center justify-between mb-2 p-2 border rounded-md">
-            <span>{{ $a->resource_name }} {{ rtrim(rtrim(number_format($a->allocated_quantity, 2), '0'), '.') }} {{ $unit }}</span>
-
-            <span class="flex gap-2">
-                <button class="btn btn-warning px-3 py-1 rounded-md text-white hover:bg-yellow-500 transition"
-                        wire:click="openEditAllocationModal({{ $a->allocation_id }})">
-                    Edit
-                </button>
-                <button class="btn btn-danger px-3 py-1 rounded-md text-white hover:bg-red-600 transition"
-                        onclick="if(confirm('Delete this allocation?')) @this.call('deleteAllocation', {{ $a->allocation_id }})">
-                    Delete
-                </button>
-            </span>
-        </div>
-    @endforeach
-
-    @if(count($allocs) === 0)
-        <span class="text-gray-400 italic text-sm">No resources allocated</span>
-    @endif
-</td>
-
-
-
-
-                <td class="flex gap-2">
-    <!-- Allocate -->
-    <button class="btn btn-success px-3 py-1 rounded-md text-white hover:bg-green-600 transition" 
-            wire:click="openAllocationModal({{ $t->task_id }})">
-        Allocate
-    </button>
-
-    <!-- Assign Member -->
-    <button class="btn btn-primary px-3 py-1 rounded-md text-white hover:bg-blue-600 transition" 
-            wire:click="openAssignMemberModal({{ $t->task_id }}, {{ $p->project_id }})">
-        Assign
-    </button>
-</td>
-
-            </tr>
+                            @php
+                                $taskBudget = DB::table('budgets')->where('task_id', $t->task_id)->first();
+                            @endphp
+                            @if($taskBudget)
+                                <button class="budgetresource-btn-warning"
+                                        wire:click="openEditBudgetModal({{ $taskBudget->budget_id }})">Edit Budget</button>
+                            @else
+                                <button class="budgetresource-btn-success"
+                                        wire:click="openAddBudgetModal({{ $t->task_id }})">Add Budget</button>
+                            @endif
+                        </td>
+                    </tr>
+                @endforeach
+            @else
+                <tr>
+                    <td>{{ $p->project_name }}</td>
+                    <td colspan="5" class="budgetresource-no-tasks">No tasks yet</td>
+                </tr>
+            @endif
         @endforeach
-    @else
-        <tr>
-            <td>{{ $p->project_name }}</td>
-            <td colspan="5" class="text-center">No tasks yet</td>
-        </tr>
-    @endif
-@endforeach
-</tbody>
-
-
+        </tbody>
     </table>
 </div>
 
 
-   <!-- Main Budget & Resource Management Modal -->
-<div class="modal" aria-hidden="{{ $showBudgetModal ? 'false' : 'true' }}">
-    <div class="modal-dialog">
-        <div class="modal-header">
-            Budget & Resource Management
-            <button class="btn btn-warning" wire:click="closeBudgetModal">Close</button>
-        </div>
-        <div class="modal-body">
-
-            <!-- Budgets Section -->
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                <h4>Budgets</h4>
-                <button class="btn btn-primary" wire:click="openAddBudgetModal">Add Budget</button>
-            </div>
-
-            <!-- Budgets Table -->
-            <table style="width:100%; border-collapse:collapse; margin-bottom:1rem;">
-                <thead>
-                    <tr>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Project</th>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Phase</th>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Estimated Cost</th>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Actual Cost</th>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Variance</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($budgets ?? [] as $b)
-                        <tr>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ DB::table('projects')->where('project_id', $b->project_id)->value('project_name') }}</td>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ DB::table('project_phases')->where('phase_id', $b->phase_id)->value('phase_name') }}</td>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ $b->estimated_cost }}</td>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ number_format($this->getActualCostForPhase($b->phase_id), 2) }}</td>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ number_format($b->estimated_cost - $this->getActualCostForPhase($b->phase_id), 2) }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-
-            
-
-            <!-- Resources Table -->
-            <table style="width:100%; border-collapse:collapse;">
-                <thead>
-                    <tr>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Resource Name</th>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Type</th>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Unit Cost</th>
-                        <th style="border:1px solid #ddd; padding:0.5rem;">Available Quantity</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($resources as $r)
-                        <tr>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ $r->resource_name }}</td>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ $r->type }}</td>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ $r->unit_cost }}</td>
-                            <td style="border:1px solid #ddd; padding:0.5rem;">{{ $r->availability_quantity }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-
-        </div>
-    </div>
-</div>
-
-<!-- Separate Add Budget Modal -->
-<div class="modal" style="display: {{ $showAddBudgetModal ? 'flex' : 'none' }};" wire:key="add-budget-modal">
-    <div class="modal-dialog">
-        <div class="modal-header">
-            Add Budget
-            <button class="btn btn-warning" wire:click="$set('showAddBudgetModal', false)">Close</button>
-        </div>
-        <div class="modal-body">
-
-            <div style="display:flex; flex-direction:column; gap:0.5rem;">
-
-                <!-- Project Dropdown -->
-                <label>
-    Project:
-    <select wire:model="newBudgetProjectId" wire:change="loadPhasesForProject($event.target.value)">
-        <option value="">-- Select Project --</option>
-        @foreach($projects as $p)
-            <option value="{{ $p->project_id }}">{{ $p->project_name }}</option>
-        @endforeach
-    </select>
-</label>
-
-
-                <!-- Phase Dropdown -->
-                <label>
-                    Phase:
-                    <select wire:model="newBudgetPhaseId" wire:key="phase-{{ $newBudgetProjectId }}">
-                        <option value="">-- Select Phase --</option>
-                        @foreach($phases as $phase)
-                            <option value="{{ $phase->phase_id }}">{{ $phase->phase_name }}</option>
-                        @endforeach
-                    </select>
-                </label>
-
-                <!-- Estimated Cost -->
-                <label>
-                    Estimated Cost:
-                    <input type="number" wire:model="newEstimatedCost" step="100">
-                </label>
-
-                <!-- Buttons -->
-                <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
-                    <button class="btn btn-success" wire:click="saveNewBudget">Save Budget</button>
-                    <button class="btn btn-secondary" wire:click="$set('showAddBudgetModal', false)">Cancel</button>
-                </div>
-
-            </div>
-        </div>
-    </div>
-</div>
-
-
-
-<!-- Separate Add Resource Modal -->
-<div class="modal" aria-hidden="{{ $showAddResourceModal ? 'false' : 'true' }}">
-    <div class="modal-dialog">
-        <div class="modal-header">
-            Add Resource
-            <button class="btn btn-warning" wire:click="$set('showAddResourceModal', false)">Close</button>
-        </div>
-        <div class="modal-body">
-            <label>Resource Name:
-                <input type="text" wire:model="newResourceName">
-            </label>
-
-            <label>Type:
-                <select wire:model="newResourceType">
-                    <option value="Food">Food</option>
-                    <option value="Equipment">Equipment</option>
-                    <option value="Other">Other</option>
-                </select>
-            </label>
-
-            <label>Unit Cost:
-                <input type="number" wire:model="newResourceUnitCost" step="100">
-            </label>
-
-            <label>Available Quantity:
-                <input type="number" wire:model="newResourceQuantity" step="1">
-            </label>
-
-            <button class="btn btn-success" wire:click="saveNewResource">Save Resource</button>
-            <button class="btn btn-secondary" wire:click="$set('showAddResourceModal', false)">Cancel</button>
-        </div>
-    </div>
-</div>
-
+<!-- Allocate Resource Modal -->
 <div class="modal" style="display: {{ $showAllocationModal ? 'flex' : 'none' }};">
     <div class="modal-dialog">
         <div class="modal-header">
-            Allocate Resource
-            <button class="btn btn-warning" class="btn btn-warning"wire:click="closeAllocationModal">Close</button>
+            <h3 class="text-lg font-semibold">Allocate Resource</h3>
+            <button class="btn btn-warning" wire:click="closeAllocationModal">× Close</button>
         </div>
-        <div class="modal-body">
-            <label>Resource:
-                <select wire:model="selectedResourceId">
+
+        <div class="modal-body space-y-4">
+            <!-- Resource -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Resource</label>
+                <select wire:model="selectedResourceId" wire:change="computeTotalCost" class="w-full border rounded-md px-3 py-2">
                     <option value="">-- Select Resource --</option>
                     @foreach($resources as $r)
-                        <option value="{{ $r->resource_id }}">{{ $r->resource_name }} (Available: {{ $r->availability_quantity }})</option>
+                        <option value="{{ $r->resource_id }}">
+                            {{ $r->resource_name }} (Available: {{ $r->availability_quantity }})
+                        </option>
                     @endforeach
                 </select>
-            </label>
+            </div>
 
-            <label>Quantity:
-                <input type="number" wire:model="allocatedQuantity" min="0" step="1">
-            </label>
+            <!-- Quantity -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                <input type="number" wire:model="allocatedQuantity" wire:keyup="computeTotalCost" min="0" step="1"
+                       class="w-full border rounded-md px-3 py-2" />
+            </div>
 
-            <div style="margin-top:0.5rem;">
-                <button class="btn btn-success" wire:click="saveAllocation">Allocate</button>
-                <button class="btn btn-secondary" wire:click="closeAllocationModal">Cancel</button>
+            <!-- Total Cost & Remaining Budget -->
+            <div class="grid grid-cols-2 gap-4 items-end">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Total Cost</label>
+                    <input type="text" readonly value="₱ {{ number_format($totalCost, 2) }}"
+                           class="w-full border bg-gray-50 rounded-md px-3 py-2 text-gray-600" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Remaining Budget</label>
+                    <input type="text" readonly value="₱ {{ number_format($remainingBudget, 2) }}"
+                           class="w-full border bg-gray-50 rounded-md px-3 py-2 text-gray-600" />
+                </div>
+            </div>
+            @error('allocatedQuantity')
+    <p class="text-red-600 text-sm mt-2">{{ $message }}</p>
+@enderror
+
+
+            <!-- Buttons -->
+            <div class="text-right mt-4">
+                <button class="btn btn-success px-3 py-1 rounded-md text-white hover:bg-green-600 transition"
+                        wire:click="saveAllocation">
+                    Allocate
+                </button>
+                <button class="btn btn-gray"
+                        wire:click="closeAllocationModal">
+                    Cancel
+                </button>
             </div>
         </div>
     </div>
 </div>
+
+@if($showBudgetModal)
+<div class="resources-modal">
+    <div class="resources-modal-box">
+        <div class="resources-modal-header">
+            <h3>{{ $editingBudget['budget_id'] ? 'Edit Budget' : 'Add Budget' }}</h3>
+            <button class="resources-close-btn" wire:click="$set('showBudgetModal', false)">&times;</button>
+        </div>
+
+        <div class="resources-form-grid">
+            <label>
+                Budget 
+                <input type="number" min="0" step="0.01" wire:model.defer="editingBudget.estimated_cost">
+            </label>
+
+            @error('editingBudget.estimated_cost')
+                <p class="text-red-600 text-sm mt-1">{{ $message }}</p>
+            @enderror
+        </div>
+
+        <div class="resources-modal-actions">
+            <button class="resources-btn-gray" wire:click="$set('showBudgetModal', false)">Cancel</button>
+            <button class="btn btn-success px-3 py-1 rounded-md text-white hover:bg-green-600 transition"
+                    wire:click="{{ $editingBudget['budget_id'] ? 'saveBudget' : 'addBudget' }}">
+                {{ $editingBudget['budget_id'] ? 'Update' : 'Add' }}
+            </button>
+        </div>
+    </div>
+</div>
+@endif
+
+
+
 
 <div class="modal" style="display: {{ $showAssignMemberModal ? 'flex' : 'none' }};">
     <div class="modal-dialog">
@@ -946,7 +1138,4 @@ $assignedIds = collect($projectTasks[$currentProjectId] ?? [])
         </div>
     </div>
 </div>
-
-
-
 </div>
