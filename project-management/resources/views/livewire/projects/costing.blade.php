@@ -19,8 +19,14 @@ new #[Layout('components.layouts.app')] class extends Component
         $resources = DB::table('resource_allocations as ra')
             ->join('resources as r', 'r.resource_id', '=', 'ra.resource_id')
             ->where('ra.task_id', $this->taskId)
-            ->select('r.type', 'r.resource_name', 'ra.allocated_quantity', 'ra.cost')
+            ->select(
+                'r.type',
+                'r.resource_name',
+                'ra.allocated_quantity',
+                DB::raw('ra.allocated_quantity * r.unit_cost as cost')
+            )
             ->get();
+
 
         // Group by type safely
         $this->costsByType = [];
@@ -37,31 +43,49 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 }
 ?>
+<div class="task-costs-container">
 
+    <!-- Task Title -->
+    <h2 class="task-title">💲 Actual Costs for Task: {{ $task->task_name ?? 'N/A' }}</h2>
 
-<div class="p-6">
-    <h2 class="text-2xl font-bold text-green-700">💲 Actual Costs for Task: {{ $task->task_name ?? 'N/A' }}</h2>
-
+    <!-- Costs by Type -->
     @foreach(['Labor', 'Materials', 'Overhead', 'Tool', 'Facility'] as $type)
-        <div class="mt-4 p-4 bg-white rounded-lg shadow-sm">
-            <h3 class="font-semibold text-gray-800">{{ $type }}</h3>
+        <div class="cost-card">
+            
+            <!-- Type Header -->
+            <h3 class="cost-type">{{ $type }}</h3>
+            
+            <!-- List of items -->
             @if(isset($costsByType[$type]) && $costsByType[$type]->isNotEmpty())
-                <ul class="list-disc list-inside mt-2">
+                <ul class="cost-list">
                     @foreach($costsByType[$type] as $item)
-                        <li>{{ $item->resource_name }} — Qty: {{ $item->allocated_quantity }} | Cost: ₱{{ number_format($item->cost,2) }}</li>
+                        <li class="cost-item">
+                            <span>{{ $item->resource_name }} — Qty: {{ $item->allocated_quantity }}</span>
+                            <span class="cost-value">₱{{ number_format($item->cost,2) }}</span>
+                        </li>
                     @endforeach
                 </ul>
-                <p class="font-semibold mt-2">Total {{ $type }}: ₱{{ number_format($this->getTotalByType($type),2) }}</p>
+
+                <!-- Total for this type -->
+                <p class="cost-total">
+                    Total {{ $type }}: <span class="cost-value">₱{{ number_format($this->getTotalByType($type),2) }}</span>
+                </p>
             @else
-                <p class="text-gray-500 mt-1">No {{ strtolower($type) }} costs recorded.</p>
+                <p class="cost-empty">No {{ strtolower($type) }} costs recorded.</p>
             @endif
+
         </div>
     @endforeach
 
-    <div class="mt-4 font-semibold text-lg">
-        Total Task Cost: ₱{{ number_format(
-            array_sum(array_map(fn($type) => $this->getTotalByType($type), ['Labor','Materials','Overhead','Tool','Facility'])), 2) }}
+    <!-- Total Task Cost -->
+    <div class="total-task-cost">
+        <span>Total Task Cost:</span>
+        <span class="total-value">₱{{ number_format(
+            array_sum(array_map(fn($type) => $this->getTotalByType($type), ['Labor','Materials','Overhead','Tool','Facility'])), 2
+        ) }}</span>
     </div>
 
-    <a href="{{ route('projects.home') }}" class="mt-4 inline-block px-4 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800">← Back to Project</a>
+    <!-- Back Button -->
+    <a href="{{ route('projects.budget') }}" class="back-button">← Back to Budget</a>
+
 </div>

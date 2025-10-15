@@ -107,7 +107,7 @@ public function openEditBudgetModal($budgetId)
 
 public function addBudget()
 {
-    // Fetch task with phase to get project_id
+    // 1️⃣ Fetch task with phase to get project_id
     $task = DB::table('tasks as t')
         ->join('project_phases as ph', 't.phase_id', '=', 'ph.phase_id')
         ->select('t.*', 'ph.project_id')
@@ -119,6 +119,7 @@ public function addBudget()
         return;
     }
 
+    // 2️⃣ Insert into budgets table
     $budgetId = DB::table('budgets')->insertGetId([
         'task_id' => $task->task_id,
         'phase_id' => $task->phase_id ?? 0,
@@ -130,12 +131,37 @@ public function addBudget()
         'updated_at' => now(),
     ]);
 
+    // 1️⃣ Insert journal entry
+$referenceNo = 'BUDGET-' . $budgetId;
+
+DB::table('journal_entries')->insert([
+    'date' => now()->toDateString(),
+    'reference_no' => $referenceNo,
+    'description' => 'Budget allocated for Task ID ' . $task->task_id,
+    'created_by' => 1, // numeric ID
+    'created_at' => now(),
+    'updated_at' => now(),
+]);
+
+// 2️⃣ Insert cost_tracking and link finance_reference_no immediately
+DB::table('cost_tracking')->insert([
+    'task_id' => $task->task_id,
+    'cost_type' => 'Budget Allocation',
+    'amount' => $this->editingBudget['estimated_cost'] ?? 0,
+    'date_incurred' => now()->toDateString(),
+    'reference_no' => $referenceNo,
+    'notes' => 'Initial budget allocation',
+    'finance_reference_no' => $referenceNo, // FK is satisfied
+    'created_at' => now(),
+    'updated_at' => now(),
+]);
+
+
+    // 6️⃣ Update local state and close modal
     $this->editingBudget['budget_id'] = $budgetId;
     $this->showBudgetModal = false;
     session()->flash('success', 'Budget added successfully!');
 }
-
-
 
 public function saveBudget()
 {
@@ -143,21 +169,43 @@ public function saveBudget()
         'editingBudget.estimated_cost' => 'required|numeric|min:0',
     ]);
 
-    // Keep actual_cost and variance intact
-    $this->editingBudget['variance'] = ($this->editingBudget['actual_cost'] ?? 0) - $this->editingBudget['estimated_cost'];
+    // 1️⃣ Correct variance formula: estimated - actual
+    $estimated = $this->editingBudget['estimated_cost'];
+    $actual = $this->editingBudget['actual_cost'] ?? 0;
+    $variance = $estimated - $actual;
 
+    // 2️⃣ Update budgets table
     DB::table('budgets')
         ->where('budget_id', $this->editingBudget['budget_id'])
         ->update([
-            'estimated_cost' => $this->editingBudget['estimated_cost'],
-            'variance' => $this->editingBudget['variance'],
+            'estimated_cost' => $estimated,
+            'variance' => $variance,
             'updated_at' => now(),
         ]);
 
+    // 3️⃣ Update cost_tracking entry
+    DB::table('cost_tracking')
+        ->where('task_id', $this->editingBudget['task_id'])
+        ->where('cost_type', 'Budget Allocation')
+        ->update([
+            'amount' => $estimated,
+            'updated_at' => now(),
+        ]);
+
+    // 4️⃣ Update journal entry
+    DB::table('journal_entries')
+        ->where('reference_no', 'BUDGET-' . $this->editingBudget['budget_id'])
+        ->update([
+            'description' => 'Updated budget for Task ID ' . $this->editingBudget['task_id'],
+            'updated_at' => now(),
+        ]);
+
+    // 5️⃣ Close modal and reset state
     $this->showBudgetModal = false;
     $this->editingBudget = [];
     session()->flash('success', 'Budget updated successfully!');
 }
+
 
 
 private function getProjectIdByTask($taskId)
@@ -785,61 +833,7 @@ DB::table('budgets')->updateOrInsert(
 
 </div>
 
-@if($showViewResourcesModal)
-<div class="friesday-modal" aria-hidden="false">
-    <div class="friesday-modal-box">
-        <!-- Header -->
-        <div class="friesday-modal-header">
-            <h3>All Resources</h3>
-            <button wire:click="closeViewResourcesModal" class="friesday-modal-close">&times;</button>
-        </div>
 
-        <!-- Body -->
-        <div class="friesday-modal-body">
-            <div class="friesday-table-container">
-                <table class="friesday-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th class="friesday-text-right">Unit Cost</th>
-                            <th class="friesday-text-right">Availability</th>
-                            <th>Status</th>
-                            <th class="friesday-text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($resources as $r)
-                        <tr>
-                            <td>{{ $r->resource_name }}</td>
-                            <td>{{ $r->type }}</td>
-                            <td class="friesday-text-right">{{ number_format($r->unit_cost, 2) }}</td>
-                            <td class="friesday-text-right">{{ rtrim(rtrim(number_format($r->availability_quantity, 2), '0'), '.') }}</td>
-                            <td>{{ $r->status }}</td>
-                            <td class="friesday-text-center">
-                                <button class="friesday-btn friesday-btn-warning"
-                                        wire:click="openEditResourceModal({{ $r->resource_id }})">Edit</button>
-                                <button class="friesday-btn friesday-btn-danger"
-                                        onclick="if(confirm('Delete this resource?')) @this.call('deleteResource', {{ $r->resource_id }})">Delete</button>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="6" class="friesday-empty">No resources found</td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="friesday-modal-footer">
-            <button wire:click="closeViewResourcesModal">Close</button>
-        </div>
-    </div>
-</div>
-@endif
 
 <!-- Edit Allocation Modal -->
 @if($showEditAllocationModal)
@@ -909,9 +903,11 @@ DB::table('budgets')->updateOrInsert(
 
 
     <!-- Projects Table -->
-    <div class="budgetresource-table-container">
-    <div class="budgetresource-table-header">Projects & Tasks</div>
-    <table class="budgetresource-table">
+<div class="phase-table-container">
+    <div style="background-color:#2e7d32;color:white;text-align:left;
+                       padding:10px 12px;font-size:1rem;">
+                Projects & Tasks</div>
+    <table class="phase-table">
         <thead>
             <tr>
                 <th>Project</th>
@@ -967,34 +963,34 @@ DB::table('budgets')->updateOrInsert(
                                         default => 'pcs',
                                     };
                                 @endphp
-                                <div class="budgetresource-alloc-row">
+                                <div class="phase-btn-row">
                                     <span>{{ $a->resource_name }} {{ rtrim(rtrim(number_format($a->allocated_quantity, 2), '0'), '.') }} {{ $unit }}</span>
-                                    <span class="budgetresource-actions">
-                                        <button class="budgetresource-btn-warning"
+                                    <span class="phase-btn-actions">
+                                        <button class="phase-btn phase-btn-yellow"
                                                 wire:click="openEditAllocationModal({{ $a->allocation_id }})">Edit</button>
-                                        <button class="budgetresource-btn-danger"
+                                        <button class="phase-btn phase-btn-red"
                                                 onclick="if(confirm('Delete this allocation?')) @this.call('deleteAllocation', {{ $a->allocation_id }})">Delete</button>
                                     </span>
                                 </div>
                             @endforeach
                             @if(count($allocs) === 0)
-                                <span class="budgetresource-no-alloc">No resources allocated</span>
+                                <span class="phase-no-data">No resources allocated</span>
                             @endif
                         </td>
-                        <td class="budgetresource-actions-cell">
-                            <button class="budgetresource-btn-success"
+                        <td class="phase-btn-actions-cell">
+                            <button class="phase-btn phase-btn-green"
                                     wire:click="openAllocationModal({{ $t->task_id }})">Allocate</button>
-                            <button class="budgetresource-btn-primary"
+                            <button class="phase-btn phase-btn-yellow"
                                     wire:click="openAssignMemberModal({{ $t->task_id }}, {{ $p->project_id }})">Assign</button>
 
                             @php
                                 $taskBudget = DB::table('budgets')->where('task_id', $t->task_id)->first();
                             @endphp
                             @if($taskBudget)
-                                <button class="budgetresource-btn-warning"
+                                <button class="phase-btn phase-btn-yellow"
                                         wire:click="openEditBudgetModal({{ $taskBudget->budget_id }})">Edit Budget</button>
                             @else
-                                <button class="budgetresource-btn-success"
+                                <button class="phase-btn phase-btn-green"
                                         wire:click="openAddBudgetModal({{ $t->task_id }})">Add Budget</button>
                             @endif
                         </td>
@@ -1003,13 +999,14 @@ DB::table('budgets')->updateOrInsert(
             @else
                 <tr>
                     <td>{{ $p->project_name }}</td>
-                    <td colspan="5" class="budgetresource-no-tasks">No tasks yet</td>
+                    <td colspan="5" class="phase-no-data">No tasks yet</td>
                 </tr>
             @endif
         @endforeach
         </tbody>
     </table>
 </div>
+
 
 
 <!-- Allocate Resource Modal -->

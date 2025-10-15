@@ -34,6 +34,50 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->loadPhases();
     }
 
+    /**************************
+     * ✅ AUTO UPDATE PHASE STATUS
+     **************************/
+    public function updatePhaseStatusFromTasks($phaseId)
+    {
+        $tasks = DB::table('tasks')
+            ->where('phase_id', $phaseId)
+            ->get();
+
+        if ($tasks->isEmpty()) {
+            // If no tasks, mark as Pending
+            DB::table('project_phases')
+                ->where('phase_id', $phaseId)
+                ->update([
+                    'status' => 'Pending',
+                    'updated_at' => now(),
+                ]);
+            return;
+        }
+
+        $total = $tasks->count();
+        $completed = $tasks->where('status', 'Completed')->count();
+        $inProgress = $tasks->where('status', 'In Progress')->count();
+
+        $newStatus = 'Pending';
+        if ($completed === $total) {
+            $newStatus = 'Completed';
+        } elseif ($inProgress > 0 || $completed > 0) {
+            $newStatus = 'In Progress';
+        }
+
+        DB::table('project_phases')
+            ->where('phase_id', $phaseId)
+            ->update([
+                'status' => $newStatus,
+                'updated_at' => now(),
+            ]);
+
+        $this->loadPhases();
+    }
+
+    /**************************
+     * ✅ LOAD + CRUD METHODS
+     **************************/
     public function loadPhases()
     {
         $this->viewPhases = DB::table('project_phases')
@@ -104,8 +148,11 @@ new #[Layout('components.layouts.app')] class extends Component
                 'description' => $this->phase_description,
                 'updated_at' => now(),
             ]);
+
+            // ✅ Recheck status after editing
+            $this->updatePhaseStatusFromTasks($this->editPhaseId);
         } else {
-            DB::table('project_phases')->insert([
+            $phaseId = DB::table('project_phases')->insertGetId([
                 'project_id' => $this->currentProjectId,
                 'phase_name' => $this->phase_name,
                 'start_date' => $this->phase_start_date,
@@ -115,6 +162,9 @@ new #[Layout('components.layouts.app')] class extends Component
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            // ✅ Set initial status check
+            $this->updatePhaseStatusFromTasks($phaseId);
         }
 
         $this->loadPhases();
@@ -130,6 +180,7 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 }
 ?>
+
 
 <div class="phase-container">
     <div class="phase-header">
