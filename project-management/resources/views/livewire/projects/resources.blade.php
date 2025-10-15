@@ -107,7 +107,7 @@ public function openEditBudgetModal($budgetId)
 
 public function addBudget()
 {
-    // Fetch task with phase to get project_id
+    // 1️⃣ Fetch task with phase to get project_id
     $task = DB::table('tasks as t')
         ->join('project_phases as ph', 't.phase_id', '=', 'ph.phase_id')
         ->select('t.*', 'ph.project_id')
@@ -119,6 +119,7 @@ public function addBudget()
         return;
     }
 
+    // 2️⃣ Insert into budgets table
     $budgetId = DB::table('budgets')->insertGetId([
         'task_id' => $task->task_id,
         'phase_id' => $task->phase_id ?? 0,
@@ -130,12 +131,37 @@ public function addBudget()
         'updated_at' => now(),
     ]);
 
+    // 1️⃣ Insert journal entry
+$referenceNo = 'BUDGET-' . $budgetId;
+
+DB::table('journal_entries')->insert([
+    'date' => now()->toDateString(),
+    'reference_no' => $referenceNo,
+    'description' => 'Budget allocated for Task ID ' . $task->task_id,
+    'created_by' => 1, // numeric ID
+    'created_at' => now(),
+    'updated_at' => now(),
+]);
+
+// 2️⃣ Insert cost_tracking and link finance_reference_no immediately
+DB::table('cost_tracking')->insert([
+    'task_id' => $task->task_id,
+    'cost_type' => 'Budget Allocation',
+    'amount' => $this->editingBudget['estimated_cost'] ?? 0,
+    'date_incurred' => now()->toDateString(),
+    'reference_no' => $referenceNo,
+    'notes' => 'Initial budget allocation',
+    'finance_reference_no' => $referenceNo, // FK is satisfied
+    'created_at' => now(),
+    'updated_at' => now(),
+]);
+
+
+    // 6️⃣ Update local state and close modal
     $this->editingBudget['budget_id'] = $budgetId;
     $this->showBudgetModal = false;
     session()->flash('success', 'Budget added successfully!');
 }
-
-
 
 public function saveBudget()
 {
@@ -143,21 +169,43 @@ public function saveBudget()
         'editingBudget.estimated_cost' => 'required|numeric|min:0',
     ]);
 
-    // Keep actual_cost and variance intact
-    $this->editingBudget['variance'] = ($this->editingBudget['actual_cost'] ?? 0) - $this->editingBudget['estimated_cost'];
+    // 1️⃣ Correct variance formula: estimated - actual
+    $estimated = $this->editingBudget['estimated_cost'];
+    $actual = $this->editingBudget['actual_cost'] ?? 0;
+    $variance = $estimated - $actual;
 
+    // 2️⃣ Update budgets table
     DB::table('budgets')
         ->where('budget_id', $this->editingBudget['budget_id'])
         ->update([
-            'estimated_cost' => $this->editingBudget['estimated_cost'],
-            'variance' => $this->editingBudget['variance'],
+            'estimated_cost' => $estimated,
+            'variance' => $variance,
             'updated_at' => now(),
         ]);
 
+    // 3️⃣ Update cost_tracking entry
+    DB::table('cost_tracking')
+        ->where('task_id', $this->editingBudget['task_id'])
+        ->where('cost_type', 'Budget Allocation')
+        ->update([
+            'amount' => $estimated,
+            'updated_at' => now(),
+        ]);
+
+    // 4️⃣ Update journal entry
+    DB::table('journal_entries')
+        ->where('reference_no', 'BUDGET-' . $this->editingBudget['budget_id'])
+        ->update([
+            'description' => 'Updated budget for Task ID ' . $this->editingBudget['task_id'],
+            'updated_at' => now(),
+        ]);
+
+    // 5️⃣ Close modal and reset state
     $this->showBudgetModal = false;
     $this->editingBudget = [];
     session()->flash('success', 'Budget updated successfully!');
 }
+
 
 
 private function getProjectIdByTask($taskId)

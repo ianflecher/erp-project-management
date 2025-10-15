@@ -1199,6 +1199,115 @@ input:focus, select:focus {
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
+/* Container */
+.task-costs-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+}
+
+/* Task title */
+.task-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #15803d; /* green */
+    margin-bottom: 30px;
+}
+
+/* Cost Card */
+.cost-card {
+    background-color: #ffffff;
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    border: 1px solid #e5e7eb;
+    transition: all 0.3s ease;
+}
+.cost-card:hover {
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+/* Cost type header */
+.cost-type {
+    font-size: 18px;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 10px;
+}
+
+/* Cost list */
+.cost-list {
+    list-style: disc inside;
+    margin-left: 0;
+    padding-left: 0;
+    margin-bottom: 10px;
+}
+.cost-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    color: #374151;
+}
+
+/* Cost value */
+.cost-value {
+    font-weight: 600;
+    color: #15803d;
+}
+
+/* Total per type */
+.cost-total {
+    margin-top: 10px;
+    font-weight: 600;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 8px;
+    color: #111827;
+}
+
+/* Empty message */
+.cost-empty {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+/* Total task cost */
+.total-task-cost {
+    background-color: #f0fdf4;
+    border: 1px solid #dcfce7;
+    padding: 15px 20px;
+    border-radius: 15px;
+    font-weight: 600;
+    font-size: 18px;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 25px;
+    color: #111827;
+}
+.total-task-cost .total-value {
+    color: #15803d;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+/* Back button */
+.back-button {
+    display: inline-block;
+    margin-top: 25px;
+    padding: 12px 25px;
+    background-color: #15803d;
+    color: #ffffff;
+    border-radius: 20px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+.back-button:hover {
+    background-color: #166534;
+    transform: scale(1.05);
+}
+
 .back-link {
     display: inline-block;
     padding: 0.5rem 1.2rem;
@@ -1215,10 +1324,6 @@ input:focus, select:focus {
     color: #fff; 
     transform: scale(1.05);
 }
-
-
-
-
     </style>
 </head>
 <body>

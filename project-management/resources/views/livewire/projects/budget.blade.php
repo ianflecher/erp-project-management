@@ -234,21 +234,31 @@ $this->variance = null;
     
 
     <!-- Header -->
-    <div style="
-        background:#2e7d32;
-        color:white;
-        padding:1rem 1.5rem;
-        border-radius:10px;
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        box-shadow:0 4px 10px rgba(0,0,0,0.15);
-    ">
-        <h2 style="font-size:1.3rem; font-weight:600; margin:0;">💰 Budget Management</h2>
-        @if ($selectedProjectId)
-            <span style="font-size:0.9rem;">Project ID: {{ $selectedProjectId }}</span>
-        @endif
-    </div>
+    <!-- Header -->
+<div style="
+    background:#2e7d32;
+    color:white;
+    padding:1rem 1.5rem;
+    border-radius:10px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    box-shadow:0 4px 10px rgba(0,0,0,0.15);
+">
+    <h2 style="font-size:1.3rem; font-weight:600; margin:0;">💰 Budget Management</h2>
+    @if ($selectedProjectId)
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+
+            <!-- ✅ View Project Journal Button -->
+           <a href="{{ route('projects.journal', ['selectedProjectId' => $selectedProjectId]) }}"
+   style="background:#6a1b9a; color:white; padding:0.4rem 0.8rem; border-radius:8px; text-decoration:none; font-size:0.85rem;">
+   View Project Journal
+</a>
+
+        </div>
+    @endif
+</div>
+
 
     <!-- Project Dropdown -->
     <div style="margin-top:1.2rem;">
