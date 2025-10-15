@@ -134,19 +134,126 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 };
 ?>
+<style>
+/* --- Container --- */
+.progress-monitor-container {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 1.5rem 2rem;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    font-family: "Segoe UI", sans-serif;
+}
+
+/* --- Headings --- */
+.progress-monitor-container h2 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #166534; /* dark green */
+    margin-bottom: 1rem;
+}
+
+.progress-monitor-container h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #22c55e; /* bright green */
+    margin-top: 2rem;
+}
+
+/* --- Table --- */
+.progress-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+    margin-top: 1rem;
+}
+
+.progress-table thead {
+    background: #dcfce7; /* light green */
+    color: #166534; /* dark green */
+}
+
+.progress-table th, 
+.progress-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.progress-table th {
+    font-weight: 600;
+}
+
+/* Right-aligned cells */
+.progress-table td.text-right {
+    text-align: right;
+}
+
+/* KPI Colors */
+.kpi-positive {
+    color: #22c55e; /* green */
+    font-weight: 600;
+}
+
+.kpi-negative {
+    color: #b91c1c; /* red */
+    font-weight: 600;
+}
+
+/* Alerts Table */
+.alerts-table thead {
+    background: #bbf7d0; /* light green alert header */
+    color: #166534; /* dark green */
+}
+
+.alerts-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* No data row */
+.table-no-data {
+    text-align: center;
+    color: #6b7280;
+    font-style: italic;
+    padding: 1rem 0;
+}
+
+/* Hover row effect */
+.progress-table tbody tr:hover,
+.alerts-table tbody tr:hover {
+    background: #f0fdf4; /* soft green hover */
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .progress-monitor-container {
+        padding: 1rem;
+    }
+    .progress-table, .alerts-table {
+        font-size: 0.85rem;
+    }
+    .progress-table th, .progress-table td,
+    .alerts-table th, .alerts-table td {
+        padding: 0.5rem;
+    }
+}
 
 
-<div class="progress-monitor-container" style="padding:1.5rem; max-width:1100px; margin:auto;">
-    <h2 style="font-size:1.4rem; font-weight:bold; color:#1565c0;">📊 Project Progress Monitoring & KPI Dashboard</h2>
+</style>
+<div class="progress-monitor-container">
+    <h2>📊 Project Progress Monitoring & KPI Dashboard</h2>
 
-    <table style="width:100%; border-collapse:collapse; margin-top:1rem; font-size:0.9rem;">
-        <thead style="background:#bbdefb;">
+    <!-- KPI Table -->
+    <table class="progress-table">
+        <thead>
             <tr>
-                <th style="padding:8px;">Project</th>
-                <th style="padding:8px; text-align:right;">Progress (%)</th>
-                <th style="padding:8px; text-align:right;">Budget (₱)</th>
-                <th style="padding:8px; text-align:right;">Time Variance (%)</th>
-                <th style="padding:8px; text-align:right;">Cost Variance (₱)</th>
+                <th>Project</th>
+                <th class="text-right">Progress (%)</th>
+                <th class="text-right">Budget (₱)</th>
+                <th class="text-right">Time Variance (%)</th>
+                <th class="text-right">Cost Variance (₱)</th>
             </tr>
         </thead>
         <tbody>
@@ -155,14 +262,14 @@ new #[Layout('components.layouts.app')] class extends Component
                     $kpi = collect($kpis)->firstWhere('project_id', $project->project_id);
                     $progress = $taskProgress[$project->project_id] ?? 0;
                 @endphp
-                <tr style="border-bottom:1px solid #ddd;">
-                    <td style="padding:8px;">{{ $project->project_name }}</td>
-                    <td style="padding:8px; text-align:right;">{{ number_format($progress, 2) }}%</td>
-                    <td style="padding:8px; text-align:right;">{{ number_format($project->budget_total, 2) }}</td>
-                    <td style="padding:8px; text-align:right; color:{{ ($kpi->time_variance ?? 0) < 0 ? '#d32f2f' : '#2e7d32' }};">
+                <tr>
+                    <td>{{ $project->project_name }}</td>
+                    <td class="text-right">{{ number_format($progress, 2) }}%</td>
+                    <td class="text-right">{{ number_format($project->budget_total, 2) }}</td>
+                    <td class="text-right {{ ($kpi->time_variance ?? 0) < 0 ? 'kpi-negative' : 'kpi-positive' }}">
                         {{ $kpi->time_variance ?? 0 }}%
                     </td>
-                    <td style="padding:8px; text-align:right; color:{{ ($kpi->cost_variance ?? 0) > 0 ? '#d32f2f' : '#2e7d32' }};">
+                    <td class="text-right {{ ($kpi->cost_variance ?? 0) > 0 ? 'kpi-negative' : 'kpi-positive' }}">
                         {{ number_format($kpi->cost_variance ?? 0, 2) }}
                     </td>
                 </tr>
@@ -170,29 +277,30 @@ new #[Layout('components.layouts.app')] class extends Component
         </tbody>
     </table>
 
-    <h3 style="margin-top:1.5rem; color:#ef6c00;">⚠️ Active Alerts</h3>
-    <table style="width:100%; border-collapse:collapse; margin-top:0.5rem; font-size:0.9rem;">
-        <thead style="background:#ffe0b2;">
+    <!-- Alerts Table -->
+    <h3>⚠️ Active Alerts</h3>
+    <table class="alerts-table">
+        <thead>
             <tr>
-                <th style="padding:8px;">Project</th>
-                <th style="padding:8px;">Type</th>
-                <th style="padding:8px;">Description</th>
-                <th style="padding:8px;">Date</th>
+                <th>Project</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Date</th>
             </tr>
         </thead>
         <tbody>
             @forelse ($alerts as $alert)
-                @php
-                    $project = collect($projects)->firstWhere('project_id', $alert->project_id);
-                @endphp
-                <tr style="border-bottom:1px solid #ddd;">
-                    <td style="padding:8px;">{{ $project->project_name ?? 'N/A' }}</td>
-                    <td style="padding:8px;">{{ $alert->alert_type }}</td>
-                    <td style="padding:8px;">{{ $alert->description }}</td>
-                    <td style="padding:8px;">{{ \Carbon\Carbon::parse($alert->alert_date)->format('Y-m-d') }}</td>
+                @php $project = collect($projects)->firstWhere('project_id', $alert->project_id); @endphp
+                <tr>
+                    <td>{{ $project->project_name ?? 'N/A' }}</td>
+                    <td>{{ $alert->alert_type }}</td>
+                    <td>{{ $alert->description }}</td>
+                    <td>{{ \Carbon\Carbon::parse($alert->alert_date)->format('Y-m-d') }}</td>
                 </tr>
             @empty
-                <tr><td colspan="4" style="padding:8px; text-align:center;">No active alerts</td></tr>
+                <tr>
+                    <td colspan="4" class="table-no-data">No active alerts</td>
+                </tr>
             @endforelse
         </tbody>
     </table>

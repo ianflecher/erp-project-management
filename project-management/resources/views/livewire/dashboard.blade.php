@@ -5,28 +5,63 @@ namespace App\Http\Livewire\Volt;
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
     public array $projects = [];
     public int $totalProjects = 0;
     public int $ongoingProjects = 0;
+    public int $completedProjects = 0;
     public float $totalBudget = 0.0;
+    public float $averageProgress = 0.0;
+    public int $delayedProjects = 0;
 
     public function mount()
     {
+        // 1️⃣ Load all projects
         $this->projects = DB::table('projects')->get()->toArray();
-
         $this->totalProjects = count($this->projects);
-        $this->ongoingProjects = collect($this->projects)
-            ->where('status', '!=', 'Completed')
-            ->count();
 
-        $this->totalBudget = collect($this->projects)
-            ->sum('budget_total');
+        // 2️⃣ Compute ongoing & completed
+        $this->ongoingProjects = collect($this->projects)->where('status', '!=', 'Completed')->count();
+        $this->completedProjects = $this->totalProjects - $this->ongoingProjects;
+
+        // 3️⃣ Compute total budget
+        $this->totalBudget = collect($this->projects)->sum('budget_total');
+
+        // 4️⃣ Compute average progress per project
+        $progressArray = [];
+        $today = Carbon::today();
+        $delayed = 0;
+
+        foreach ($this->projects as $project) {
+            $tasks = DB::table('tasks')
+                ->join('project_phases', 'project_phases.phase_id', '=', 'tasks.phase_id')
+                ->where('project_phases.project_id', $project->project_id)
+                ->select('tasks.progress_percentage', 'tasks.end_date')
+                ->get();
+
+            if ($tasks->count() > 0) {
+                $avg = $tasks->avg('progress_percentage');
+                $progressArray[] = $avg;
+
+                // Check if project is delayed
+                $expectedProgress = min((($today->diffInDays(Carbon::parse($project->start_date)) / max(Carbon::parse($project->start_date)->diffInDays(Carbon::parse($project->end_date)),1)) * 100), 100);
+                if ($avg < $expectedProgress && $project->status != 'Completed') {
+                    $delayed++;
+                }
+            } else {
+                $progressArray[] = 0;
+            }
+        }
+
+        $this->averageProgress = $progressArray ? round(array_sum($progressArray)/count($progressArray),2) : 0;
+        $this->delayedProjects = $delayed;
     }
-}
+};
 ?>
+
 
 <style>
 /* ============================================================
@@ -88,6 +123,18 @@ new #[Layout('components.layouts.app')] class extends Component
     background: linear-gradient(135deg, #fff176, #fbc02d);
     color: #3e2723; /* dark brown text for legibility */
 }
+
+.card-red {
+    background: linear-gradient(135deg, #e57373, #f44336);
+    color: #ffffff;
+}
+
+.card-progress {
+    background: linear-gradient(135deg, #43a047, #66bb6a); /* green gradient */
+    color: #ffffff; /* white text for contrast */
+}
+
+
 
 .card h2 {
     font-size: 1rem;
@@ -192,10 +239,25 @@ new #[Layout('components.layouts.app')] class extends Component
         display: none; /* hide long columns on small screens */
     }
 }
+
+.card-progress {
+    background: linear-gradient(135deg, #fb8c00, #ffb74d); /* yellow gradient */
+    color: #3e2723; /* dark brown text for contrast */
+}
+
+.cards-center {
+    display: flex;
+    justify-content: center; /* center horizontally */
+    gap: 1.2rem;             /* spacing between cards */
+    flex-wrap: wrap;          /* wrap on smaller screens */
+    margin-top: 1rem;
+}
+
+
 </style>
 
 <div class="dashboard">
-    <!-- Dashboard Cards -->
+    <!-- Top Cards -->
     <div class="cards">
         <div class="card card-green">
             <h2>Total Projects</h2>
@@ -206,48 +268,72 @@ new #[Layout('components.layouts.app')] class extends Component
             <p>{{ $ongoingProjects }}</p>
         </div>
         <div class="card card-blue">
-            <h2>Total Budget</h2>
-            <p>₱{{ number_format($totalBudget, 2) }}</p>
+            <h2>Completed Projects</h2>
+            <p>{{ $completedProjects }}</p>
         </div>
         <div class="card card-purple">
-            <h2>Completed Projects</h2>
-            <p>{{ $totalProjects - $ongoingProjects }}</p>
+            <h2>Total Budget</h2>
+            <p>₱{{ number_format($totalBudget,2) }}</p>
         </div>
     </div>
 
-    <!-- Projects Table -->
+    <!-- Centered Bottom Cards -->
+    <div class="cards cards-center">
+        <div class="card card-progress">
+            <h2>Average Progress</h2>
+            <p>{{ $averageProgress }}%</p>
+        </div>
+        <div class="card card-red">
+            <h2>Delayed Projects</h2>
+            <p>{{ $delayedProjects }}</p>
+        </div>
+    </div>
+
+
+
+    <!-- KPI Table -->
     <div class="table-container">
         <div class="table-header">
-            <h3>Projects Overview</h3>
+            <h3>Project Summary</h3>
         </div>
         <table class="projects-table">
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Project Name</th>
-                    <th>Description</th>
-                    <th>Start Date</th>
-                    <th>End Date</th>
+                    <th>Project</th>
+                    <th>Ongoing Tasks</th>
+                    <th>Completed Tasks</th>
+                    <th>Progress (%)</th>
                     <th>Status</th>
-                    <th>Budget</th>
-                    <th>Manager ID</th>
+                    <th>Budget (₱)</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach ($projects as $project)
+                    @php
+                        $tasks = DB::table('tasks')
+                            ->join('project_phases', 'project_phases.phase_id', '=', 'tasks.phase_id')
+                            ->where('project_phases.project_id', $project->project_id)
+                            ->get();
+                        $completedTasks = $tasks->where('status', 'Completed')->count();
+                        $ongoingTasks = $tasks->count() - $completedTasks;
+                        $progress = $tasks->avg('progress_percentage') ?? 0;
+                    @endphp
                     <tr>
-                        <td>{{ $project->project_id }}</td>
                         <td>{{ $project->project_name }}</td>
-                        <td>{{ \Illuminate\Support\Str::limit($project->description, 50) }}</td>
-                        <td>{{ $project->start_date }}</td>
-                        <td>{{ $project->end_date }}</td>
+                        <td>{{ $ongoingTasks }}</td>
+                        <td>{{ $completedTasks }}</td>
+                        <td>
+                            <div style="background:#d9f9d9; border-radius:6px; overflow:hidden; height:14px; width:120px;">
+                                <div style="background:#22c55e; width:{{ $progress }}%; height:100%;"></div>
+                            </div>
+                            <span style="font-size:0.8rem; margin-left:6px;">{{ round($progress,2) }}%</span>
+                        </td>
                         <td>
                             <span class="status-badge {{ strtolower($project->status) === 'completed' ? 'status-approved' : 'status-pending' }}">
                                 {{ ucfirst($project->status) }}
                             </span>
                         </td>
-                        <td>₱{{ number_format($project->budget_total, 2) }}</td>
-                        <td>{{ $project->project_manager_id }}</td>
+                        <td>₱{{ number_format($project->budget_total,2) }}</td>
                     </tr>
                 @endforeach
             </tbody>
