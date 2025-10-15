@@ -29,11 +29,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public $remainingBudget = 0;
     public array $editingBudget = [];
     public ?int $selectedTaskId = null;
-
-
-
     public ?int $selectedProjectFilter = null; // null means show all projects
-
 
     public ?int $task_assigned_to = null;
     public ?int $editTaskAssignedTo = null;
@@ -305,17 +301,7 @@ public function deleteResource($resourceId)
 {
     $allocation = DB::table('resource_allocations as ra')
         ->join('resources as r', 'ra.resource_id', '=', 'r.resource_id')
-        ->join('tasks as t', 'ra.task_id', '=', 't.task_id')
-        ->join('project_phases as pp', 't.phase_id', '=', 'pp.phase_id') // join phases
-        ->select(
-            'ra.*',
-            'r.resource_name',
-            'r.unit_cost',
-            'r.type',
-            't.task_name',
-            'pp.project_id', // get project via phase
-            'ra.allocated_quantity as original_quantity'
-        )
+        ->select('ra.*', 'r.resource_name', 'r.unit_cost', 'r.type')
         ->where('ra.allocation_id', $allocationId)
         ->first();
 
@@ -324,21 +310,16 @@ public function deleteResource($resourceId)
         return;
     }
 
-    $project = DB::table('projects')->where('project_id', $allocation->project_id)->first();
-    if (!$project) {
-        $this->addError('editingAllocation', 'Project not found.');
-        return;
-    }
 
-    // Compute current spent excluding this allocation
-    $currentSpent = DB::table('resource_allocations as ra')
-        ->join('tasks as t', 'ra.task_id', '=', 't.task_id')
-        ->join('project_phases as pp', 't.phase_id', '=', 'pp.phase_id')
-        ->where('pp.project_id', $project->project_id)
-        ->where('ra.allocation_id', '!=', $allocationId)
-        ->sum('ra.cost');
+    $taskBudget = DB::table('budgets')
+        ->where('task_id', $allocation->task_id)
+        ->first();
 
-    $remainingBudget = $project->budget_total - $currentSpent;
+    // Compute total allocations for this task excluding the current allocation
+    $allocatedSumExcludingCurrent = DB::table('resource_allocations')
+        ->where('task_id', $allocation->task_id)
+        ->where('allocation_id', '!=', $allocationId)
+        ->sum('cost');
 
     $this->editingAllocation = [
         'allocation_id' => $allocation->allocation_id,
@@ -347,15 +328,17 @@ public function deleteResource($resourceId)
         'unit_cost' => $allocation->unit_cost,
         'type' => $allocation->type,
         'task_id' => $allocation->task_id,
-        'project_id' => $allocation->project_id,
         'allocated_quantity' => $allocation->allocated_quantity,
-        'original_quantity' => $allocation->original_quantity,
         'total_cost' => $allocation->allocated_quantity * $allocation->unit_cost,
-        'remaining_budget' => $remainingBudget,
+        'remaining_budget' => $taskBudget 
+            ? max(0, $taskBudget->estimated_cost - $allocatedSumExcludingCurrent) 
+            : 0,
     ];
+
 
     $this->showEditAllocationModal = true;
 }
+
 
 
     public function updateAllocation()
@@ -572,7 +555,19 @@ public function openAllocationModal($taskId)
         ->where('pp.project_id', $project->project_id)
         ->sum('ra.cost');
 
-    $this->remainingBudget = $project->budget_total - $currentSpent;
+     $taskBudget = DB::table('budgets')
+        ->where('task_id', $task->task_id)
+        ->first();
+
+    // Compute total allocated for this task
+    $allocatedSumForTask = DB::table('resource_allocations')
+        ->where('task_id', $task->task_id)
+        ->sum('cost');
+
+    // Remaining budget is task-level estimated minus already allocated
+    $this->remainingBudget = $taskBudget 
+        ? max(0, $taskBudget->estimated_cost - $allocatedSumForTask) 
+        : 0;
 
     // Reset fields
     $this->selectedResourceId = null;

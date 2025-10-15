@@ -16,6 +16,7 @@ Volt::route('/projects/members/{project_id}', 'projects.projectmembers')->name('
 Volt::route('/projects/phase/{project_id}', 'projects.projectphase')->name('projects.phase');
 Volt::route('/projects/task/{phase_id}', 'projects.projecttask')->name('projects.task');
 Volt::route('/projects/viewresources', 'projects.viewresources')->name('projects.viewresources');
+Volt::route('/projects/costing/{task}', 'projects.costing')->name('projects.cost');
 
 use Carbon\Carbon;
 

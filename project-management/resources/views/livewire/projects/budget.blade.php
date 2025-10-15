@@ -231,6 +231,7 @@ $this->variance = null;
 
 <!-- ✅ View Section -->
 <div class="p-6">
+    
 
     <!-- Header -->
     <div style="
@@ -343,32 +344,38 @@ $this->variance = null;
                             }
                         @endphp
 
-                        <li style="background:#f9f9f9; border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.4rem; display:flex; justify-content:space-between; align-items:center;">
-                            <div>
-                                <strong>{{ $task->task_name }}</strong>
-                                <span style="font-size:0.8rem; color:#777;">({{ ucfirst($task->status) }})</span>
+                        <li style="background:#f9f9f9; border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.4rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+    <!-- Task Info -->
+    <div style="flex:1; min-width:180px;">
+        <strong>{{ $task->task_name }}</strong>
+        <span style="font-size:0.8rem; color:#777;">({{ ucfirst($task->status) }})</span>
 
-                                @if ($taskBudget)
-    @php
-        $taskActualCost = $taskBudget->task_id
-            ? $taskBudget->actual_cost // ✅ use task actual cost
-            : $taskBudget->actual_cost; // fallback for phase budget
-    @endphp
-    <p style="margin:0; font-size:0.85rem; color:#388e3c;">
-        💰 Est: ₱{{ number_format((float)$taskBudget->estimated_cost, 2) }}
-        | Act: ₱{{ number_format((float)$taskActualCost, 2) }}
-        @if($budgetSource === 'phase')
-            <span style="font-size:0.75rem; color:#666;">(phase budget)</span>
+        @if ($taskBudget)
+            @php
+                $taskActualCost = $taskBudget->task_id
+                    ? $taskBudget->actual_cost
+                    : $taskBudget->actual_cost;
+            @endphp
+            <p style="margin:0.2rem 0 0; font-size:0.85rem; color:#388e3c;">
+                💰 Est: ₱{{ number_format((float)$taskBudget->estimated_cost, 2) }}
+                | Act: ₱{{ number_format((float)$taskActualCost, 2) }}
+                @if($budgetSource === 'phase')
+                    <span style="font-size:0.75rem; color:#666;">(phase budget)</span>
+                @else
+                    <span style="font-size:0.75rem; color:#666;">(task budget)</span>
+                @endif
+            </p>
         @else
-            <span style="font-size:0.75rem; color:#666;">(task budget)</span>
+            <p style="margin:0.2rem 0 0; font-size:0.85rem; color:#777;">No budget set</p>
         @endif
-    </p>
-@else
-    <p style="margin:0; font-size:0.85rem; color:#777;">No budget set</p>
-@endif
+    </div>
+        <a href="{{ route('projects.cost', ['task' => $task->task_id]) }}" 
+            style="background:#1e88e5; color:white; border:none; border-radius:8px; padding:0.4rem 0.8rem; text-decoration:none; cursor:pointer;">
+            View Costs
+        </a>
+    </div>
+</li>
 
-                            </div>
-                        </li>
                     @endforeach
                 </ul>
             @else

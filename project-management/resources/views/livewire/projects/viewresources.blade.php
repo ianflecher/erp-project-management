@@ -164,9 +164,9 @@ new #[Layout('components.layouts.app')] class extends Component
     <span>Type</span>
     <select wire:model="type" required>
         <option value="">-- Select Type --</option>
-        <option value="Consumable">Consumable</option>
-        <option value="Equipment">Equipment</option>
-        <option value="Service">Service</option>
+        <option value="Labor">Labor</option>
+        <option value="Materials">Materials</option>
+        <option value="Overhead">Overhead</option>
         <option value="Tool">Tool</option>
         <option value="Facility">Facility</option>
     </select>
