@@ -3,11 +3,44 @@
 <head>
     @include('partials.head')
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <title>TGIF Project Management Module</title>
 
     
 
     <style>
+        input, textarea, select {
+    background-color: white !important;
+    color: black !important;
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: gray !important;
+  }
+
+  /* Fix for date inputs */
+  input[type="date"] {
+    color-scheme: light;
+    background-color: white !important;
+    color: black !important;
+  }
+
+  /* Optional: for calendar icon (in some browsers) */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0);
+  }
+
+  /* Fix for number input arrows (up/down) */
+  input[type="number"] {
+    color-scheme: light;
+    background-color: white !important;
+    color: black !important;
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    filter: invert(0);
+  }
         /* Reset */
         * { margin:0; padding:0; box-sizing:border-box; }
 

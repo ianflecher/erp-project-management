@@ -93,6 +93,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->isEdit = false;
         $this->currentProjectId = $projectId;
         $this->showPhaseModal = true;
+        
     }
 
     public function openEditPhaseModal(int $phase_id)
@@ -236,8 +237,11 @@ new #[Layout('components.layouts.app')] class extends Component
         <div class="modal-dialog">
             <div class="modal-header">
                 <div>
-                    {{ $isEdit ? 'Edit Phase #' . $editPhaseId : 'New Phase for Project #' . $currentProjectId }}
-                </div>
+    <div>
+    {{ $isEdit ? 'Edit Phase: ' . $phase_name : 'Add New Phase' }}
+</div>
+
+</div>
                 <button type="button" wire:click="closePhaseModal" class="btn btn-warning">×</button>
             </div>
             <div class="modal-body">
