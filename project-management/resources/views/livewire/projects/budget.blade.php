@@ -103,13 +103,15 @@ $this->variance = null;
     $this->totalVariance = $this->totalEstimated - $this->totalActual;
 }
 
-    public function openAddBudgetModal(int $phaseId,): void
+    public function openAddBudgetModal(int $phaseId): void
 {
     $this->selectedPhaseId = $phaseId;
-    $this->selectedTaskId = null; // ✅ phase-level only
+    $this->selectedTaskId = null; // phase-level only
     $this->resetBudgetFields();
-    $this->showBudgetModal = true;
+    $this->showAddBudgetModal = true; // ✅ correct modal
 }
+
+
 
     public function getActualCostForPhase(int $phaseId): float
 {
@@ -229,6 +231,8 @@ $this->variance = null;
 };
 ?>
 
+
+
 <!-- ✅ View Section -->
 <div class="p-6">
     
@@ -251,7 +255,7 @@ $this->variance = null;
 
             <!-- ✅ View Project Journal Button -->
            <a href="{{ route('projects.journal', ['selectedProjectId' => $selectedProjectId]) }}"
-   style="background:#6a1b9a; color:white; padding:0.4rem 0.8rem; border-radius:8px; text-decoration:none; font-size:0.85rem;">
+   class="phase-btn phase-btn-green">
    View Project Journal
 </a>
 
@@ -324,10 +328,13 @@ $this->variance = null;
                 @endif
             </div>
 
-            <button wire:click="openAddBudgetModal({{ $phase->phase_id }})"
-                style="background:#43a047; color:white; border:none; border-radius:8px; padding:0.4rem 0.8rem; cursor:pointer;">
-                + Add Budget
-            </button>
+            <a href="{{ route('projects.addbudget', ['phase_id' => $phase->phase_id]) }}"
+   class="phase-btn phase-btn-green">
+   Add Budget
+</a>
+
+
+
         </div>
 
         <div style="margin-top:0.8rem;">
@@ -385,7 +392,6 @@ $this->variance = null;
         </a>
     </div>
 </li>
-
                     @endforeach
                 </ul>
             @else
@@ -396,6 +402,29 @@ $this->variance = null;
 @endforeach
 </div>
 @endif
+
+  @if ($showAddBudgetModal)
+<div class="add-budget-modal-overlay">
+    <div class="add-budget-modal-content">
+        <div class="add-budget-modal-header">
+            <h3>Add Budget</h3>
+            <button wire:click="$set('showAddBudgetModal', false)">×</button>
+        </div>
+        <div class="add-budget-modal-body">
+            <form wire:submit.prevent="saveBudget">
+                <label for="estimatedCost">Estimated Cost</label>
+                <input id="estimatedCost" type="number" step="0.01" wire:model="estimatedCost">
+                @error('estimatedCost') 
+                    <p class="error-msg">{{ $message }}</p> 
+                @enderror
+
+                <button type="submit" class="save-budget-btn">💾 Save Budget</button>
+            </form>
+        </div>
+    </div>
+</div>
+@endif
+
 
     @if ($showBudgetModal)
     <div class="modal" aria-hidden="false">
@@ -439,28 +468,4 @@ $this->variance = null;
     </div>
 </div>
 @endif
-
-
-    <!-- Add Budget Modal -->
-    @if ($showAddBudgetModal)
-        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:1000;">
-            <div style="background:white; border-radius:10px; width:380px; box-shadow:0 10px 30px rgba(0,0,0,0.2); overflow:hidden;">
-                <div style="background:#2e7d32; color:white; padding:0.8rem 1rem; display:flex; justify-content:space-between; align-items:center;">
-                    <h3 style="margin:0; font-size:1rem;">Add Budget</h3>
-                    <button wire:click="$set('showAddBudgetModal', false)" style="background:none; border:none; color:white; font-size:1.2rem; cursor:pointer;">×</button>
-                </div>
-                <div style="padding:1rem;">
-                    <label style="font-weight:600;">Estimated Cost</label>
-                    <input type="number" step="0.01" wire:model="estimated_cost" 
-                        style="width:100%; margin-top:0.4rem; padding:0.6rem; border:1px solid #ccc; border-radius:6px;">
-                    @error('estimated_cost') <p style="color:red; font-size:0.8rem;">{{ $message }}</p> @enderror
-
-                    <button wire:click="saveBudget" 
-                        style="width:100%; margin-top:1rem; padding:0.7rem; background:#43a047; color:white; border:none; border-radius:8px; cursor:pointer;">
-                        💾 Save Budget
-                    </button>
-                </div>
-            </div>
-        </div>
-    @endif
 </div>

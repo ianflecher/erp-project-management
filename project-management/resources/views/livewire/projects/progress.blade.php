@@ -14,24 +14,18 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function mount()
     {
-        // 1️⃣ Load all active projects
         $this->projects = DB::table('projects')->get()->toArray();
 
-        // 2️⃣ Compute KPIs, progress, and alerts
         foreach ($this->projects as $project) {
-            $this->calculateTaskProgress($project); // (a)
-            $this->updateKPI($project);             // (c)
-            $this->checkAlerts($project);           // (d)
+            $this->calculateTaskProgress($project);
+            $this->updateKPI($project);
+            $this->checkAlerts($project);
         }
 
-        // 3️⃣ Load data for dashboard
         $this->kpis = DB::table('kpi_monitoring')->get()->toArray();
         $this->alerts = DB::table('alerts')->orderByDesc('alert_date')->limit(10)->get()->toArray();
     }
 
-    /**
-     * (a) Compute average task progress per project
-     */
     private function calculateTaskProgress($project)
     {
         $tasks = DB::table('tasks')
@@ -40,38 +34,30 @@ new #[Layout('components.layouts.app')] class extends Component
             ->select('tasks.progress_percentage')
             ->get();
 
-        $averageProgress = $tasks->avg('progress_percentage') ?? 0;
-
-        // Store in memory (no DB column for completion%)
-        $this->taskProgress[$project->project_id] = round($averageProgress, 2);
+        $this->taskProgress[$project->project_id] = round($tasks->avg('progress_percentage') ?? 0, 2);
     }
 
-    /**
-     * (c) Compute KPIs for time and cost
-     */
     private function updateKPI($project)
     {
         $today = Carbon::today();
         $start = Carbon::parse($project->start_date);
         $end = Carbon::parse($project->end_date);
 
-        // Time variance = actual progress - expected progress
         $duration = max($start->diffInDays($end), 1);
         $daysElapsed = $start->diffInDays($today);
         $expectedProgress = min(($daysElapsed / $duration) * 100, 100);
         $actualProgress = $this->taskProgress[$project->project_id] ?? 0;
-        $timeVariance = round($actualProgress - $expectedProgress, 2); // negative = behind
+        $timeVariance = round($actualProgress - $expectedProgress, 2);
 
-        // Cost variance = Actual - Budget
         $budget = (float) $project->budget_total;
         $actualCost = DB::table('cost_tracking')
             ->join('tasks as t', 't.task_id', '=', 'cost_tracking.task_id')
             ->join('project_phases as p', 'p.phase_id', '=', 't.phase_id')
             ->where('p.project_id', $project->project_id)
             ->sum('cost_tracking.amount');
+
         $costVariance = round($actualCost - $budget, 2);
 
-        // Insert or update KPI record
         $exists = DB::table('kpi_monitoring')->where('project_id', $project->project_id)->exists();
 
         $data = [
@@ -90,23 +76,15 @@ new #[Layout('components.layouts.app')] class extends Component
         }
     }
 
-    /**
-     * (d) Trigger alerts for delays and cost overruns
-     */
     private function checkAlerts($project)
     {
-        $kpi = DB::table('kpi_monitoring')
-            ->where('project_id', $project->project_id)
-            ->first();
-
+        $kpi = DB::table('kpi_monitoring')->where('project_id', $project->project_id)->first();
         if (!$kpi) return;
 
-        // Delay alert (behind schedule)
         if ($kpi->time_variance < 0) {
             $this->insertAlert($project->project_id, 'Delay', 'Project is behind schedule by ' . abs($kpi->time_variance) . '%.');
         }
 
-        // Cost overrun alert
         if ($kpi->cost_variance > 0) {
             $this->insertAlert($project->project_id, 'Cost Overrun', 'Actual cost exceeds budget by ₱' . number_format($kpi->cost_variance, 2));
         }
@@ -135,125 +113,157 @@ new #[Layout('components.layouts.app')] class extends Component
 };
 ?>
 <style>
-/* --- Container --- */
-.progress-monitor-container {
-    max-width: 1200px;
+/* --- General Container --- */
+.dashboard-container {
+    max-width: 1400px;
     margin: 2rem auto;
-    padding: 1.5rem 2rem;
-    background: #ffffff;
-    border-radius: 16px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    padding: 2.5rem;
+    background: #f0fdf4; /* softer green tint */
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     font-family: "Segoe UI", sans-serif;
 }
 
 /* --- Headings --- */
-.progress-monitor-container h2 {
-    font-size: 1.6rem;
+.dashboard-container h2 {
+    font-size: 2rem;
     font-weight: 700;
-    color: #166534; /* dark green */
+    color: #065f46;
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.dashboard-container h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #047857;
+    margin-top: 3rem;
     margin-bottom: 1rem;
 }
 
-.progress-monitor-container h3 {
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: #22c55e; /* bright green */
-    margin-top: 2rem;
-}
-
-/* --- Table --- */
-.progress-table {
+/* --- Tables --- */
+.dashboard-table, .alerts-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.95rem;
     margin-top: 1rem;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    background: #ffffff;
 }
 
-.progress-table thead {
-    background: #dcfce7; /* light green */
-    color: #166534; /* dark green */
-}
-
-.progress-table th, 
-.progress-table td {
-    padding: 0.75rem 1rem;
-    text-align: left;
-    border-bottom: 1px solid #e5e7eb;
-}
-
-.progress-table th {
+.dashboard-table th, .alerts-table th {
+    background: linear-gradient(90deg, #16a34a, #22c55e); /* lively green gradient */
+    color: #ffffff;
     font-weight: 600;
+    padding: 0.8rem 1rem;
+    text-align: left;
 }
 
-/* Right-aligned cells */
-.progress-table td.text-right {
-    text-align: right;
+.dashboard-table td, .alerts-table td {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: middle;
 }
 
-/* KPI Colors */
+/* --- KPI Colors --- */
 .kpi-positive {
-    color: #22c55e; /* green */
+    color: #16a34a;
     font-weight: 600;
 }
 
 .kpi-negative {
-    color: #b91c1c; /* red */
+    color: #dc2626;
     font-weight: 600;
 }
 
-/* Alerts Table */
+/* --- Progress Bar --- */
+.progress-bar-wrapper {
+    position: relative;
+    background: #d1fae5; /* light green background */
+    border-radius: 12px;
+    height: 26px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+    border-radius: 12px 0 0 12px;
+    width: 0%;
+    transition: width 0.6s ease;
+}
+
+.progress-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* perfectly center */
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4); /* makes text readable */
+}
+
+
+/* --- Alerts Table Enhancements --- */
 .alerts-table thead {
-    background: #bbf7d0; /* light green alert header */
-    color: #166534; /* dark green */
+    background: linear-gradient(90deg, #16a34a, #22c55e);
+    color: #ffffff;
 }
 
-.alerts-table td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #e5e7eb;
-}
-
-/* No data row */
 .table-no-data {
     text-align: center;
-    color: #6b7280;
+    color: #065f46;
     font-style: italic;
     padding: 1rem 0;
 }
 
-/* Hover row effect */
-.progress-table tbody tr:hover,
+/* Hover effect for rows */
+.dashboard-table tbody tr:hover,
 .alerts-table tbody tr:hover {
-    background: #f0fdf4; /* soft green hover */
+    background: #dcfce7; /* light green hover */
+    transition: background 0.3s ease;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .progress-monitor-container {
-        padding: 1rem;
-    }
-    .progress-table, .alerts-table {
-        font-size: 0.85rem;
-    }
-    .progress-table th, .progress-table td,
-    .alerts-table th, .alerts-table td {
-        padding: 0.5rem;
-    }
+/* --- Responsive --- */
+@media (max-width: 992px) {
+    .dashboard-container { padding: 1.8rem; }
+    .dashboard-table, .alerts-table { font-size: 0.9rem; }
+    .progress-label { font-size: 0.75rem; }
 }
 
+@media (max-width: 576px) {
+    .dashboard-container { padding: 1.2rem; }
+    .dashboard-table, .alerts-table { font-size: 0.85rem; }
+    .progress-label { font-size: 0.7rem; }
+}
 
+/* --- Column Alignment --- */
+.dashboard-table th:first-child { text-align: left; }
+.dashboard-table th:nth-child(2) { text-align: left; }
+.dashboard-table th:nth-child(n+3) { text-align: right; }
+
+.alerts-table th:first-child, .alerts-table td:first-child { text-align: left; }
+.alerts-table th:nth-child(2), .alerts-table td:nth-child(2) { text-align: left; }
+.alerts-table th:nth-child(3), .alerts-table td:nth-child(3) { text-align: left; }
+.alerts-table th:nth-child(4), .alerts-table td:nth-child(4) { text-align: center; }
 </style>
-<div class="progress-monitor-container">
-    <h2>📊 Project Progress Monitoring & KPI Dashboard</h2>
+
+
+<div class="dashboard-container">
+    <h2>📊 Project Progress & KPI Dashboard</h2>
 
     <!-- KPI Table -->
-    <table class="progress-table">
+    <table class="dashboard-table">
         <thead>
             <tr>
                 <th>Project</th>
-                <th class="text-right">Progress (%)</th>
-                <th class="text-right">Budget (₱)</th>
-                <th class="text-right">Time Variance (%)</th>
-                <th class="text-right">Cost Variance (₱)</th>
+                <th>Progress</th>
+                <th>Budget (₱)</th>
+                <th>Time Variance</th>
+                <th>Cost Variance</th>
             </tr>
         </thead>
         <tbody>
@@ -264,7 +274,13 @@ new #[Layout('components.layouts.app')] class extends Component
                 @endphp
                 <tr>
                     <td>{{ $project->project_name }}</td>
-                    <td class="text-right">{{ number_format($progress, 2) }}%</td>
+                    <td>
+    <div class="progress-bar-wrapper">
+        <div class="progress-bar-fill" style="width: {{ $progress }}%;"></div>
+        <span class="progress-label">{{ number_format($progress, 2) }}%</span>
+    </div>
+</td>
+
                     <td class="text-right">{{ number_format($project->budget_total, 2) }}</td>
                     <td class="text-right {{ ($kpi->time_variance ?? 0) < 0 ? 'kpi-negative' : 'kpi-positive' }}">
                         {{ $kpi->time_variance ?? 0 }}%
