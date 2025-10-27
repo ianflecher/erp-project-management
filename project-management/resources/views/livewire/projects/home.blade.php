@@ -405,8 +405,8 @@ new #[Layout('components.layouts.app')] class extends Component
 
 
 <!-- Include DHTMLX Gantt -->
-<script src="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.js"></script>
-<link rel="stylesheet" href="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.css">
+<link rel="stylesheet" href="{{ asset('css/dhtmlxgantt.css') }}">
+<script src="{{ asset('js/dhtmlxgantt.js') }}"></script>
 <script>
 function loadGantt(projectId) {
     fetch(`/gantt-tasks/${projectId}`)
