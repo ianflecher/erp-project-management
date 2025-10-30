@@ -1378,7 +1378,6 @@ input:focus, select:focus {
     <nav>
         <ul>
             <li><a href="{{ route('projects.home') }}" class="nav-item {{ request()->routeIs('home') ? 'active' : '' }}">Project Planning and Scheduling</a></li>
-            <li><a href="{{ route('projects.resources') }}" class="nav-item {{ request()->routeIs('projects.resources') ? 'active' : '' }}">Resource Allocation Management</a></li>
             <li><a href="{{ route('projects.budget') }}" class="nav-item {{ request()->routeIs('projects.budget') ? 'active' : '' }}">Budgeting & Cost Tracking</a></li>
             <li><a href="{{ route('projects.progress') }}" class="nav-item {{ request()->routeIs('projects.progress') ? 'active' : '' }}">Progress Monitoring & Reporting</a></li>
         </ul>

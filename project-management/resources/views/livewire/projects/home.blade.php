@@ -200,10 +200,22 @@ new #[Layout('components.layouts.app')] class extends Component
 ?>
 <div class="phase-container">
 
+<!-- Top Buttons Container -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+
     <!-- Add Project Button -->
-    <button type="button" wire:click="openProjectModal" class="phase-btn phase-btn-green" style="margin-bottom:1rem;">
+    <button type="button" wire:click="openProjectModal" class="phase-btn phase-btn-green">
         + Add Project
     </button>
+
+    <!-- Resource Allocation Button -->
+    <a href="{{ route('projects.resources') }}" class="phase-btn phase-btn-green">
+        Allocate Resources
+    </a>
+
+</div>
+
+
 
 
     <div class="phase-table-container">

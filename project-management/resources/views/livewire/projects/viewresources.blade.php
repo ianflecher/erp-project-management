@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 new #[Layout('components.layouts.app')] class extends Component
 {
     public array $resources = [];
+    public array $inventories = [];
+
     public bool $showResourceModal = false;
     public ?int $editing_id = null;
 
@@ -15,15 +17,22 @@ new #[Layout('components.layouts.app')] class extends Component
     public float $unit_cost = 0.00;
     public float $availability_quantity = 0.00;
     public string $status = '';
+    public ?int $inventory_id = null;
 
     public function mount()
     {
         $this->loadResources();
+        $this->inventories = DB::table('inventories')->orderBy('name')->get()->toArray();
     }
 
     public function loadResources()
     {
-        $this->resources = DB::table('resources')->orderByDesc('resource_id')->get()->toArray();
+        $this->resources = DB::table('resources')
+            ->leftJoin('inventories', 'resources.inventory_id', '=', 'inventories.id')
+            ->select('resources.*', 'inventories.name as inventory_name', 'inventories.quantity as inventory_qty')
+            ->orderByDesc('resource_id')
+            ->get()
+            ->toArray();
     }
 
     public function openAddModal()
@@ -42,6 +51,7 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->unit_cost = $res->unit_cost;
             $this->availability_quantity = $res->availability_quantity;
             $this->status = $res->status;
+            $this->inventory_id = $res->inventory_id;
             $this->showResourceModal = true;
         }
     }
@@ -54,25 +64,21 @@ new #[Layout('components.layouts.app')] class extends Component
 
     public function saveResource()
     {
+        $data = [
+            'resource_name' => $this->resource_name,
+            'type' => $this->type,
+            'unit_cost' => $this->unit_cost,
+            'availability_quantity' => $this->availability_quantity,
+            'status' => $this->status,
+            'inventory_id' => $this->inventory_id,
+            'updated_at' => now(),
+        ];
+
         if ($this->editing_id) {
-            DB::table('resources')->where('resource_id', $this->editing_id)->update([
-                'resource_name' => $this->resource_name,
-                'type' => $this->type,
-                'unit_cost' => $this->unit_cost,
-                'availability_quantity' => $this->availability_quantity,
-                'status' => $this->status,
-                'updated_at' => now(),
-            ]);
+            DB::table('resources')->where('resource_id', $this->editing_id)->update($data);
         } else {
-            DB::table('resources')->insert([
-                'resource_name' => $this->resource_name,
-                'type' => $this->type,
-                'unit_cost' => $this->unit_cost,
-                'availability_quantity' => $this->availability_quantity,
-                'status' => $this->status,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $data['created_at'] = now();
+            DB::table('resources')->insert($data);
         }
 
         $this->closeResourceModal();
@@ -93,19 +99,17 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->unit_cost = 0.00;
         $this->availability_quantity = 0.00;
         $this->status = '';
+        $this->inventory_id = null;
     }
 }
 ?>
-
 <div class="resources-container">
-    <div class="task-header">
+
+    <div class="task-header" style="display:flex;justify-content:space-between;align-items:center;">
         <a href="javascript:history.back()" class="back-link">← Back</a>
-    </div>
-    <div class="resources-header">
         <h2>Resources Management</h2>
         <button class="resources-btn resources-btn-green" wire:click="openAddModal">+ Add Resource</button>
     </div>
-
 
     <div class="resources-table-wrapper">
         @if(count($resources))
@@ -113,6 +117,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 <thead>
                     <tr>
                         <th>Resource Name</th>
+                        <th>Inventory Item</th>
                         <th>Type</th>
                         <th>Unit Cost</th>
                         <th>Available Qty</th>
@@ -124,6 +129,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     @foreach($resources as $r)
                         <tr>
                             <td>{{ $r->resource_name }}</td>
+                            <td>{{ $r->inventory_name ?? '—' }} (Qty: {{ $r->inventory_qty ?? 0 }})</td>
                             <td>{{ $r->type }}</td>
                             <td>₱{{ number_format($r->unit_cost, 2) }}</td>
                             <td>{{ $r->availability_quantity }}</td>
@@ -145,8 +151,7 @@ new #[Layout('components.layouts.app')] class extends Component
         @endif
     </div>
 
-    
-<!-- === Resource Modal === -->
+    <!-- === Modal === -->
 <div class="resources-modal" style="display: {{ $showResourceModal ? 'flex' : 'none' }};">
     <div class="resources-modal-box">
         <div class="resources-modal-header">
@@ -155,45 +160,67 @@ new #[Layout('components.layouts.app')] class extends Component
         </div>
 
         <form wire:submit.prevent="saveResource" class="resources-form">
-            <div class="resources-form-grid">
-                <label>
-                    <span>Resource Name</span>
-                    <input type="text" wire:model="resource_name" required>
-                </label>
-                <label>
-    <span>Type</span>
-    <select wire:model="type" required>
-        <option value="">-- Select Type --</option>
-        <option value="Labor">Labor</option>
-        <option value="Materials">Materials</option>
-        <option value="Overhead">Overhead</option>
-        <option value="Tool">Tool</option>
-        <option value="Facility">Facility</option>
-    </select>
-</label>
+            <div class="resources-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
 
-                <label>
-                    <span>Unit Cost</span>
-                    <input type="number" step="0.01" wire:model="unit_cost" required>
-                </label>
-                <label>
-                    <span>Available Quantity</span>
-                    <input type="number" step="0.01" wire:model="availability_quantity" required>
-                </label>
-                <label>
-    <span>Status</span>
-    <select wire:model="status" required>
-        <option value="">-- Select Status --</option>
-        <option value="Active">Active</option>
-        <option value="Unavailable">Unavailable</option>
-        <option value="Maintenance">Maintenance</option>
-        <option value="Reserved">Reserved</option>
-    </select>
-</label>
+                <!-- Left Column -->
+                <div class="resources-form-column">
+                    <label>
+                        <span>Resource Name</span>
+                        <input type="text" wire:model="resource_name" required>
+                    </label>
+
+                    <label>
+                        <span>Inventory Item</span>
+                        <select wire:model="inventory_id" wire:change="$set('availability_quantity', $event.target.options[$event.target.selectedIndex].dataset.qty)" required>
+                            <option value="">-- Select Inventory --</option>
+                            @foreach($inventories as $inv)
+                                <option value="{{ $inv->id }}" data-qty="{{ $inv->quantity }}">
+                                    {{ $inv->name }} (Qty: {{ $inv->quantity }})
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+
+                    <label>
+                        <span>Type</span>
+                        <select wire:model="type" required>
+                            <option value="">-- Select Type --</option>
+                            <option value="Labor">Labor</option>
+                            <option value="Materials">Materials</option>
+                            <option value="Overhead">Overhead</option>
+                            <option value="Tool">Tool</option>
+                            <option value="Facility">Facility</option>
+                        </select>
+                    </label>
+                </div>
+
+                <!-- Right Column -->
+                <div class="resources-form-column">
+                    <label>
+                        <span>Unit Cost</span>
+                        <input type="number" step="0.01" wire:model="unit_cost" required>
+                    </label>
+
+                    <label>
+                        <span>Available Quantity</span>
+                        <input type="number" wire:model="availability_quantity" readonly>
+                    </label>
+
+                    <label>
+                        <span>Status</span>
+                        <select wire:model="status" required>
+                            <option value="">-- Select Status --</option>
+                            <option value="Active">Active</option>
+                            <option value="Unavailable">Unavailable</option>
+                            <option value="Maintenance">Maintenance</option>
+                            <option value="Reserved">Reserved</option>
+                        </select>
+                    </label>
+                </div>
 
             </div>
 
-            <div class="resources-modal-actions">
+            <div class="resources-modal-actions" style="margin-top:1rem;">
                 <button type="submit" class="resources-btn resources-btn-green">
                     {{ $editing_id ? 'Update' : 'Save' }}
                 </button>
@@ -202,6 +229,5 @@ new #[Layout('components.layouts.app')] class extends Component
         </form>
     </div>
 </div>
-
 
 </div>

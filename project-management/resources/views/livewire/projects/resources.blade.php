@@ -808,9 +808,14 @@ DB::table('budgets')->updateOrInsert(
 
 <div>
     <!-- Resources Section -->
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-    <h4></h4>
-    <div class="flex gap-2">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+
+    <!-- Back Button -->
+    <div class="task-header">
+        <a href="javascript:history.back()" class="back-link">← Back</a>
+    </div>
+
+    <!-- View Resources Button -->
     <a href="{{ route('projects.viewresources') }}"
        style="
            background-color: #22c55e;
@@ -827,11 +832,11 @@ DB::table('budgets')->updateOrInsert(
        "
        onmouseover="this.style.backgroundColor='#16a34a'; this.style.transform='translateY(-2px)'"
        onmouseout="this.style.backgroundColor='#22c55e'; this.style.transform='none'">
-       👁 View
+       👁 View Resources
     </a>
-</div>
 
 </div>
+
 
 
 
