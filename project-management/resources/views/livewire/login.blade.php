@@ -4,16 +4,16 @@ use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Laravel\Fortify\Features;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Volt\Component;
 
-new #[Layout('components.layouts.landingapp')] class extends Component
-{
+new #[Layout('components.layouts.landingapp')] class extends Component {
     #[Validate('required|string|email')]
     public string $email = '';
 
@@ -26,43 +26,41 @@ new #[Layout('components.layouts.landingapp')] class extends Component
     {
         $this->validate();
         $this->ensureIsNotRateLimited();
+        $user = $this->validateCredentials();
 
-        $user = Auth::getProvider()->retrieveByCredentials([
-            'email' => $this->email,
-            'password' => $this->password
-        ]);
+        if (Features::canManageTwoFactorAuthentication() && $user->hasEnabledTwoFactorAuthentication()) {
+            Session::put([
+                'login.id' => $user->getKey(),
+                'login.remember' => $this->remember,
+            ]);
 
-        if (!$user || !Auth::getProvider()->validateCredentials($user, ['password' => $this->password])) {
-            RateLimiter::hit($this->throttleKey());
-            $this->addError('email', __('auth.failed')); // ✅ Show Wrong email/password error
-
-            return;
-        }
-
-        // Role
-        $role = $user->role ?? DB::table('hr_employees')->where('email', $user->email)->value('role');
-
-        if (!$role) {
-            $this->addError('email', 'Your account does not have a valid role assigned.');
+            $this->redirect(route('two-factor.login'), navigate: true);
             return;
         }
 
         Auth::login($user, $this->remember);
         RateLimiter::clear($this->throttleKey());
         Session::regenerate();
+        $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
+    }
 
-        if ($role === 'Admin') {
-            $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
-        } elseif ($role === 'Manager' || $role === 'Employee') {
-            $this->redirectIntended(default: route('employee', absolute: false), navigate: true);
-        } else {
-            $this->addError('email', 'Your account role is not recognized.');
+    protected function validateCredentials(): User
+    {
+        $user = Auth::getProvider()->retrieveByCredentials(['email' => $this->email, 'password' => $this->password]);
+
+        if (! $user || ! Auth::getProvider()->validateCredentials($user, ['password' => $this->password])) {
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => __('auth.failed'),
+            ]);
         }
+        return $user;
     }
 
     protected function ensureIsNotRateLimited(): void
     {
-        if (!RateLimiter::tooManyAttempts($this->throttleKey(), 5)) return;
+        if (! RateLimiter::tooManyAttempts($this->throttleKey(), 5)) return;
 
         event(new Lockout(request()));
         $seconds = RateLimiter::availableIn($this->throttleKey());
@@ -81,10 +79,8 @@ new #[Layout('components.layouts.landingapp')] class extends Component
     }
 };
 ?>
-
-
-<!-- Login Blade / Livewire view -->
 <div class="min-h-screen flex items-center justify-center bg-[#0B260F] p-6">
+
     <div class="w-full max-w-md bg-[#124116]/95 backdrop-blur-lg shadow-2xl rounded-2xl p-8 border border-[#1A5A20]">
 
         <!-- Title -->
@@ -98,7 +94,7 @@ new #[Layout('components.layouts.landingapp')] class extends Component
         </div>
 
         <!-- Login Form -->
-        <form wire:submit.prevent="login" class="space-y-5">
+        <form wire:submit="login" method="POST" class="space-y-5">
 
             <!-- Email -->
             <div>
@@ -124,9 +120,15 @@ new #[Layout('components.layouts.landingapp')] class extends Component
                            text-white shadow-inner focus:ring-2 focus:ring-[#31D67B] 
                            outline-none transition-all"
                 >
+                @if (Route::has('password.request'))
+                    <a href="{{ route('password.request') }}" wire:navigate
+                       class="text-sm font-medium mt-1 inline-block text-[#9CF3B3] hover:underline">
+                        Forgot Password?
+                    </a>
+                @endif
             </div>
 
-            <!-- Remember Me -->
+            <!-- Remember -->
             <label class="flex items-center gap-2 text-sm font-medium text-[#C8FFD4]">
                 <input type="checkbox" wire:model="remember" style="accent-color:#31D67B;">
                 Remember me
@@ -141,11 +143,6 @@ new #[Layout('components.layouts.landingapp')] class extends Component
                 Log In
             </button>
         </form>
-        @error('email')
-<div class="mt-4 bg-red-600/20 text-red-300 border border-red-600 rounded-lg p-3 text-sm text-center">
-    {{ $message }}
-</div>
-@enderror
 
         <!-- Register -->
         <div class="text-center text-sm mt-6 text-[#9CF3B3]">

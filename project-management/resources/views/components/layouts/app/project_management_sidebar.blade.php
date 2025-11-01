@@ -1370,8 +1370,6 @@ input:focus, select:focus {
     </a>
 </header>
 
-
-
 <!-- Sidebar -->
 <aside class="sidebar">
     <h3>Navigation</h3>
@@ -1380,6 +1378,26 @@ input:focus, select:focus {
             <li><a href="{{ route('projects.home') }}" class="nav-item {{ request()->routeIs('home') ? 'active' : '' }}">Project Planning and Scheduling</a></li>
             <li><a href="{{ route('projects.budget') }}" class="nav-item {{ request()->routeIs('projects.budget') ? 'active' : '' }}">Budgeting & Cost Tracking</a></li>
             <li><a href="{{ route('projects.progress') }}" class="nav-item {{ request()->routeIs('projects.progress') ? 'active' : '' }}">Progress Monitoring & Reporting</a></li>
+            
+            <!-- Logout Button -->
+            <li style="margin-top:20px;">
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" style="
+                        background-color: #e74c3c; 
+                        color: white; 
+                        border: none; 
+                        padding: 10px 20px; 
+                        border-radius: 5px; 
+                        cursor: pointer;
+                        font-size: 1rem;
+                        width: 100%;
+                        text-align: center;
+                    ">
+                        Logout
+                    </button>
+                </form>
+            </li>
         </ul>
     </nav>
 </aside>
@@ -1388,9 +1406,6 @@ input:focus, select:focus {
 <main class="main-content">
     {{ $slot }}
 </main>
-
-
-
 
 </body>
 </html>

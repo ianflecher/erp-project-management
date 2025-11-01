@@ -21,39 +21,44 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 
     private function loadProjectData()
-    {
-        $project = DB::table('projects')->where('project_id', $this->project_id)->first();
+{
+    $project = DB::table('projects')->where('project_id', $this->project_id)->first();
 
-        if ($project) {
-            $this->project_name = $project->project_name ?? 'Unnamed Project';
-        }
+    if ($project) {
+        $this->project_name = $project->project_name ?? 'Unnamed Project';
+    }
 
-        $this->employees = DB::table('hr_employees')->orderBy('full_name')->get()->toArray();
+    $this->employees = DB::table('hr_employees')->orderBy('full_name')->get()->toArray();
 
-        $raw = $project->project_member_id ?? '';
-        $ids = collect(explode(',', $raw))
-            ->filter(fn($x) => $x !== '' && $x !== null)
-            ->map(fn($x) => (int)$x)
-            ->values()
-            ->toArray();
+    $raw = $project->project_member_id ?? '';
+    $ids = collect(explode(',', $raw))
+        ->filter(fn($x) => $x !== '' && $x !== null)
+        ->map(fn($x) => (int)$x)
+        ->values()
+        ->toArray();
 
-        $this->projectMembers = [];
+    $this->projectMembers = [];
 
-        if (count($ids)) {
-            $emps = DB::table('hr_employees')->whereIn('employee_id', $ids)->get();
+    if (count($ids)) {
+        $emps = DB::table('hr_employees')->whereIn('employee_id', $ids)->get();
 
-            foreach ($ids as $id) {
-                $emp = $emps->firstWhere('employee_id', $id);
-                if ($emp) {
-                    $this->projectMembers[] = [
-                        'employee_id' => (int)$emp->employee_id,
-                        'full_name' => $emp->full_name,
-                        'role' => $emp->role,
-                    ];
-                }
+        foreach ($ids as $id) {
+            $emp = $emps->firstWhere('employee_id', $id);
+            if ($emp) {
+                // Check if this member has accepted the project
+                $accepted = ($project->employee_accepted && in_array($id, explode(',', $project->project_member_id))) ? 1 : 0;
+
+                $this->projectMembers[] = [
+                    'employee_id' => (int)$emp->employee_id,
+                    'full_name' => $emp->full_name,
+                    'role' => $emp->role,
+                    'accepted' => $accepted,
+                ];
             }
         }
     }
+}
+
 
     public function addMember()
     {
@@ -119,22 +124,30 @@ new #[Layout('components.layouts.app')] class extends Component
     </div>
 
     <div class="member-list">
-        @if(count($projectMembers))
-            @foreach($projectMembers as $member)
-                <div class="member-card" wire:key="member-{{ $member['employee_id'] }}">
-                    <div class="member-details">
-                        <div class="member-name">{{ $member['full_name'] }}</div>
-                        <div class="member-role">{{ $member['role'] }}</div>
-                    </div>
-                    <div class="member-actions">
-                        <button class="remove-btn" wire:click="removeMember({{ $member['employee_id'] }})">Remove</button>
+    @if(count($projectMembers))
+        @foreach($projectMembers as $member)
+            <div class="member-card" wire:key="member-{{ $member['employee_id'] }}">
+                <div class="member-details">
+                    <div class="member-name">{{ $member['full_name'] }}</div>
+                    <div class="member-role">{{ $member['role'] }}</div>
+                    <div class="member-status">
+                        @if($member['accepted'])
+                            <span class="text-green-500 font-semibold">Accepted</span>
+                        @else
+                            <span class="text-yellow-300 font-semibold">Pending</span>
+                        @endif
                     </div>
                 </div>
-            @endforeach
-        @else
-            <div class="no-members">No members yet.</div>
-        @endif
-    </div>
+                <div class="member-actions">
+                    <button class="remove-btn" wire:click="removeMember({{ $member['employee_id'] }})">Remove</button>
+                </div>
+            </div>
+        @endforeach
+    @else
+        <div class="no-members">No members yet.</div>
+    @endif
+</div>
+
 
     <div class="member-form">
         <h3>Add New Member</h3>
@@ -147,13 +160,14 @@ new #[Layout('components.layouts.app')] class extends Component
             <div class="form-group">
                 <label for="selectedMemberId">Select Existing Employee</label>
                 <select id="selectedMemberId" wire:model="selectedMemberId">
-                    <option value="">-- Select Employee --</option>
-                    @foreach ($employees as $emp)
-                        @if(!collect($projectMembers)->pluck('employee_id')->contains($emp->employee_id))
-                            <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
-                        @endif
-                    @endforeach
-                </select>
+    <option value="">-- Select Employee --</option>
+    @foreach ($employees as $emp)
+        @if(!collect($projectMembers)->pluck('employee_id')->contains($emp->employee_id) && $emp->role !== 'Admin')
+            <option value="{{ $emp->employee_id }}">{{ $emp->full_name }}</option>
+        @endif
+    @endforeach
+</select>
+
             </div>
 
             <div style="text-align:right; margin-top:1rem;">

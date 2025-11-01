@@ -74,7 +74,7 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $total = $tasks->count();
         $completed = $tasks->where('status', 'Completed')->count();
-        $inProgress = $tasks->where('status', 'In Progress')->count();
+        $inProgress = $tasks->whereIn('status', ['In Progress', 'Submit for Checking'])->count();
 
         $newStatus = 'Pending';
         if ($completed === $total) {
@@ -89,35 +89,48 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 
     /**************************
-     * ✅ TOGGLE STATUS BUTTON
+     * ✅ TASK STATUS CONTROLS
      **************************/
-    public function toggleTaskStatus($task_id)
+    public function startTask($task_id)
     {
-        $task = DB::table('tasks')->where('task_id', $task_id)->first();
-        if (!$task) return;
+        DB::table('tasks')->where('task_id', $task_id)->update([
+            'status' => 'In Progress',
+            'progress_percentage' => 50,
+            'updated_at' => now(),
+        ]);
+        $this->updatePhaseStatus();
+        $this->loadTasks();
+    }
 
-        $newStatus = 'Pending';
-        $newProgress = 0;
+    public function submitTaskForChecking($task_id)
+    {
+        DB::table('tasks')->where('task_id', $task_id)->update([
+            'status' => 'Submit for Checking',
+            'progress_percentage' => 90,
+            'updated_at' => now(),
+        ]);
+        $this->updatePhaseStatus();
+        $this->loadTasks();
+    }
 
-        if ($task->status === 'Pending') {
-            $newStatus = 'In Progress';
-            $newProgress = 50;
-        } elseif ($task->status === 'In Progress') {
-            $newStatus = 'Completed';
-            $newProgress = 100;
-        } elseif ($task->status === 'Completed') {
-            $newStatus = 'Pending';
-            $newProgress = 0;
-        }
+    public function approveTask($task_id)
+    {
+        DB::table('tasks')->where('task_id', $task_id)->update([
+            'status' => 'Completed',
+            'progress_percentage' => 100,
+            'updated_at' => now(),
+        ]);
+        $this->updatePhaseStatus();
+        $this->loadTasks();
+    }
 
-        DB::table('tasks')
-            ->where('task_id', $task_id)
-            ->update([
-                'status' => $newStatus,
-                'progress_percentage' => $newProgress,
-                'updated_at' => now(),
-            ]);
-
+    public function rejectTask($task_id)
+    {
+        DB::table('tasks')->where('task_id', $task_id)->update([
+            'status' => 'In Progress',
+            'progress_percentage' => 50,
+            'updated_at' => now(),
+        ]);
         $this->updatePhaseStatus();
         $this->loadTasks();
     }
@@ -231,6 +244,8 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 }
 ?>
+
+
 <!-- === Task Page === -->
 <div class="phase-container">
     <div class="phase-header">
@@ -267,13 +282,15 @@ new #[Layout('components.layouts.app')] class extends Component
                             <td>{{ $task->end_date }}</td>
                             <td>{{ $task->status }}</td>
                             <td>{{ $task->progress_percentage }}%</td>
-                            <td style="display:flex;gap:0.3rem;flex-wrap:wrap;">
-                                <button type="button" wire:click="toggleTaskStatus({{ $task->task_id }})" class="task-btn task-btn-yellow">
-                                    Next Status
-                                </button>
-                                <button type="button" wire:click="openEditTaskModal({{ $task->task_id }})" class="task-btn task-btn-yellow">Edit</button>
-                                <button type="button" wire:click="confirmDeleteTask({{ $task->task_id }})" class="task-btn task-btn-red">Delete</button>
-                            </td>
+                           <td style="display:flex;gap:0.3rem;flex-wrap:wrap;">
+
+    <button wire:click="openEditTaskModal({{ $task->task_id }})" 
+            class="task-btn task-btn-yellow">Edit</button>
+
+    <button wire:click="confirmDeleteTask({{ $task->task_id }})" 
+            class="task-btn task-btn-red">Delete</button>
+
+</td>
                         </tr>
                     @endforeach
                 </tbody>

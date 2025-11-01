@@ -5,7 +5,15 @@ use Livewire\Volt\Volt;
 use Illuminate\Support\Facades\DB;
 use App\Http\Livewire\Volt\ProjectMembers;
 
-Volt::route('/', 'dashboard')->name('dashboard');
+Volt::route('/', 'auth.login')->name('login');
+
+// Dashboard after login
+// Admin dashboard
+Volt::route('/dashboard', 'dashboard')->name('dashboard');
+
+// Employee / Manager dashboard
+Volt::route('/employee', 'Employeedashboard')->name('employee');
+Volt::route('/employeetask', 'projects.employeetask')->name('employeetask');
 
 
 Volt::route('/projects/home', 'projects.home')->name('projects.home');

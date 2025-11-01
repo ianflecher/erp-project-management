@@ -1,5 +1,7 @@
 <?php
 
+namespace App\Http\Livewire\Volt;
+
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\DB;
@@ -21,67 +23,18 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $description = '';
     public string $start_date = '';
     public string $end_date = '';
-    public string $status = 'Planned';
+    public string $status = 'Pending';
     public float $budget_total = 0.0;
-    public int $project_manager_id = 1;
+    public ?int $project_manager_id = null;
 
     public function mount()
     {
         $this->loadProjects();
         $this->loadManagers();
-        foreach ($this->projects as $project) {
-        $this->updateProjectStatusFromPhases($project->project_id);
-    }
     }
 
     /***************
-     * ✅ Auto Update Project Status from Phases
-     ***************/
-    public function updateProjectStatusFromPhases($projectId)
-{
-    $phases = DB::table('project_phases')
-        ->where('project_id', $projectId)
-        ->pluck('status');
-
-    if ($phases->isEmpty()) {
-        DB::table('projects')
-            ->where('project_id', $projectId)
-            ->update(['status' => 'Planned', 'updated_at' => now()]);
-        return;
-    }
-
-    $total = $phases->count();
-    $completed = $phases->filter(fn($s) => $s === 'Completed')->count();
-    $inProgress = $phases->filter(fn($s) => $s === 'In Progress')->count();
-    $onHold = $phases->filter(fn($s) => $s === 'On Hold')->count();
-    $cancelled = $phases->filter(fn($s) => $s === 'Cancelled')->count();
-
-    if ($completed === $total) {
-        $newStatus = 'Completed';
-    } elseif ($cancelled === $total) {
-        $newStatus = 'Cancelled';
-    } elseif ($inProgress > 0) {
-        $newStatus = 'In Progress';
-    } elseif ($onHold > 0 && $completed === 0 && $inProgress === 0) {
-        $newStatus = 'On Hold';
-    } else {
-        $newStatus = 'Planned';
-    }
-
-    DB::table('projects')
-        ->where('project_id', $projectId)
-        ->update([
-            'status' => $newStatus,
-            'updated_at' => now(),
-        ]);
-
-    $this->loadProjects();
-}
-
-
-
-    /***************
-     * ✅ Load Data
+     * Load Data
      ***************/
     public function loadProjects()
     {
@@ -96,13 +49,14 @@ new #[Layout('components.layouts.app')] class extends Component
     public function loadManagers()
     {
         $this->managers = DB::table('hr_employees')
+            ->where('role', '!=', 'Admin') // exclude Admin
             ->orderBy('full_name')
             ->get()
             ->toArray();
     }
 
     /***************
-     * ✅ Create Project
+     * Create Project
      ***************/
     public function openProjectModal() { $this->resetProjectFields(); $this->showProjectModal = true; }
     public function closeProjectModal() { $this->showProjectModal = false; }
@@ -116,9 +70,11 @@ new #[Layout('components.layouts.app')] class extends Component
             'description'        => $this->description,
             'start_date'         => $this->start_date,
             'end_date'           => $this->end_date,
-            'status'             => $this->status,
+            'status'             => 'Pending',       // remain Pending
             'budget_total'       => $this->budget_total,
             'project_manager_id' => $this->project_manager_id,
+            'project_member_id'  => null,
+            'employee_accepted'  => 0,               // DO NOT auto accept
             'created_at'         => now(),
             'updated_at'         => now(),
         ]);
@@ -133,13 +89,13 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->description = '';
         $this->start_date = '';
         $this->end_date = '';
-        $this->status = 'Planned';
+        $this->status = 'Pending';
         $this->budget_total = 0.0;
-        $this->project_manager_id = 1;
+        $this->project_manager_id = null;
     }
 
     /***************
-     * ✅ Edit Project
+     * Edit Project
      ***************/
     public function openEditModal($projectId)
     {
@@ -166,6 +122,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'start_date'         => $this->editProject['start_date'] ?? null,
                 'end_date'           => $this->editProject['end_date'] ?? null,
                 'updated_at'         => now(),
+                // DO NOT update 'employee_accepted' here
             ]);
 
         $this->closeEditModal();
@@ -173,7 +130,7 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 
     /***************
-     * ✅ Delete Project
+     * Delete Project
      ***************/
     public function confirmDelete($projectId)
     {
@@ -196,8 +153,9 @@ new #[Layout('components.layouts.app')] class extends Component
         }
     }
 };
-
 ?>
+
+
 <div class="phase-container">
 
 <!-- Top Buttons Container -->
@@ -389,15 +347,6 @@ new #[Layout('components.layouts.app')] class extends Component
                     <label>Start Date:<input type="date" wire:model="start_date" required /></label>
                     <label>End Date:<input type="date" wire:model="end_date" required /></label>
                     <label>Description:<input type="text" wire:model="description" /></label>
-                    <label>Status:
-                        <select wire:model="status" required>
-                            <option value="Planned">Planned</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="On Hold">On Hold</option>
-                            <option value="Cancelled">Cancelled</option>
-                            <option value="Completed">Completed</option>
-                        </select>
-                    </label>
 
                     <label>Budget:<input type="number" wire:model="budget_total" min="0" step="0.01" /></label>
                     <label>Project Manager:

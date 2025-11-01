@@ -138,7 +138,7 @@ DB::table('journal_entries')->insert([
     'date' => now()->toDateString(),
     'reference_no' => $referenceNo,
     'description' => 'Budget allocated for Task ID ' . $task->task_id,
-    'created_by' => 1, // numeric ID
+    'created_by' => $createdBy, // numeric ID
     'created_at' => now(),
     'updated_at' => now(),
 ]);
@@ -911,7 +911,8 @@ DB::table('budgets')->updateOrInsert(
 <div class="phase-table-container">
     <div style="background-color:#2e7d32;color:white;text-align:left;
                        padding:10px 12px;font-size:1rem;">
-                Projects & Tasks</div>
+        Projects & Tasks
+    </div>
     <table class="phase-table">
         <thead>
             <tr>
@@ -982,23 +983,69 @@ DB::table('budgets')->updateOrInsert(
                                 <span class="phase-no-data">No resources allocated</span>
                             @endif
                         </td>
-                        <td class="phase-btn-actions-cell">
-                            <button class="phase-btn phase-btn-green"
-                                    wire:click="openAllocationModal({{ $t->task_id }})">Allocate</button>
-                            <button class="phase-btn phase-btn-yellow"
-                                    wire:click="openAssignMemberModal({{ $t->task_id }}, {{ $p->project_id }})">Assign</button>
+<td class="phase-btn-actions-cell">
+    <button class="phase-btn phase-btn-green"
+            wire:click="openAllocationModal({{ $t->task_id }})">Allocate</button>
+    <button class="phase-btn phase-btn-yellow"
+            wire:click="openAssignMemberModal({{ $t->task_id }}, {{ $p->project_id }})">Assign</button>
 
-                            @php
-                                $taskBudget = DB::table('budgets')->where('task_id', $t->task_id)->first();
-                            @endphp
-                            @if($taskBudget)
-                                <button class="phase-btn phase-btn-yellow"
-                                        wire:click="openEditBudgetModal({{ $taskBudget->budget_id }})">Edit Budget</button>
-                            @else
-                                <button class="phase-btn phase-btn-green"
-                                        wire:click="openAddBudgetModal({{ $t->task_id }})">Add Budget</button>
-                            @endif
-                        </td>
+    @php
+        $taskBudget = DB::table('budgets')->where('task_id', $t->task_id)->first();
+    @endphp
+
+    @if($taskBudget)
+        <button class="phase-btn phase-btn-green" 
+                onclick="document.getElementById('budgetModal{{ $t->task_id }}').classList.remove('hidden')">
+            Request Budget Change
+        </button>
+
+        <!-- Budget Change Modal -->
+        <div id="budgetModal{{ $t->task_id }}" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 w-96 relative">
+                <!-- Close button -->
+                <button class="absolute top-2 right-2 text-gray-500 hover:text-gray-700 font-bold text-xl"
+                        onclick="document.getElementById('budgetModal{{ $t->task_id }}').classList.add('hidden')">&times;</button>
+
+                <h2 class="text-lg font-bold mb-4">Request Budget Change</h2>
+                <input type="text" placeholder="Enter new budget" class="w-full border rounded p-2 mb-6">
+
+                <div class="flex justify-center gap-4">
+                    <button class="phase-btn phase-btn-green px-8 py-3 text-lg font-semibold"
+                            onclick="openWaitingModal({{ $t->task_id }})">
+                        Submit
+                    </button>
+                </div>
+
+                <p class="text-sm text-gray-500 mt-4 text-center">*Put Desired Budget.*</p>
+            </div>
+        </div>
+
+        <!-- Waiting for Approval Modal -->
+        <div id="waitingModal{{ $t->task_id }}" class="fixed inset-0 bg-black bg-opacity-70 hidden flex items-center justify-center z-50 pointer-events-auto">
+            <div class="bg-white rounded-lg p-8 w-80 text-center relative">
+                <!-- Close button -->
+                <button class="absolute top-2 right-2 text-gray-500 hover:text-gray-700 font-bold text-xl"
+                        onclick="document.getElementById('waitingModal{{ $t->task_id }}').classList.add('hidden')">&times;</button>
+
+                <h2 class="text-lg font-bold mb-4">Waiting for Approval</h2>
+                <p class="text-gray-600">Your budget request has been submitted. Please wait for manager approval.</p>
+            </div>
+        </div>
+
+        <script>
+            function openWaitingModal(taskId) {
+                // Hide the budget modal
+                document.getElementById(`budgetModal${taskId}`).classList.add('hidden');
+                // Show waiting modal
+                document.getElementById(`waitingModal${taskId}`).classList.remove('hidden');
+            }
+        </script>
+    @else
+        <button class="phase-btn phase-btn-green"
+                wire:click="openAddBudgetModal({{ $t->task_id }})">Add Budget</button>
+    @endif
+</td>
+
                     </tr>
                 @endforeach
             @else
@@ -1011,6 +1058,7 @@ DB::table('budgets')->updateOrInsert(
         </tbody>
     </table>
 </div>
+
 
 
 

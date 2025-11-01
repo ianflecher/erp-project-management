@@ -165,6 +165,14 @@ new #[Layout('components.layouts.app')] class extends Component
             // you could throw validation error or return
         }
 
+        if ($this->inventory_id) {
+    $inv = collect($this->inventories)->firstWhere('id', $this->inventory_id);
+    if ($inv) {
+        $this->resource_name = $inv->name;
+    }
+}
+
+
         $data = [
             'resource_name' => $this->resource_name,
             'type' => $this->type,
@@ -232,7 +240,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 <tbody>
                     @foreach($resources as $r)
                         <tr>
-                            <td>{{ $r->inventory_name ?? '—' }} {{ $r->inventory_name ? '(Qty: '.$r->inventory_qty.')' : '' }}</td>
+                            <td>{{ $r->resource_name }}</td>
                             <td>{{ $r->type }}</td>
                             <td>₱{{ number_format($r->unit_cost, 2) }}</td>
                             <td>{{ $r->availability_quantity }}</td>
