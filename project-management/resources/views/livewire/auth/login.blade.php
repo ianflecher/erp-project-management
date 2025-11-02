@@ -81,79 +81,177 @@ new #[Layout('components.layouts.landingapp')] class extends Component
     }
 };
 ?>
-<div class="min-h-screen flex items-center justify-center p-6 bg-gray-100">
+<style>
+    .login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: #f3f4f6;
+}
 
-    <div class="w-full max-w-md bg-[#124116]/95 backdrop-blur-xl shadow-2xl rounded-2xl p-8 border border-[#1A5A20]">
+/* Card */
+.login-card {
+    width: 100%;
+    max-width: 420px;
+    background: rgba(18, 65, 22, 0.95);
+    backdrop-filter: blur(12px);
+    border-radius: 16px;
+    padding: 32px;
+    border: 1px solid #1A5A20;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+}
 
-        <!-- Title -->
-        <div class="text-center mb-8">
-            <h2 class="text-3xl font-extrabold tracking-tight text-[#C8FFD4]">
-                Welcome Back
-            </h2>
-            <p class="text-sm mt-1 font-medium text-[#9CF3B3]">
-                Sign in to your account
-            </p>
+/* Title */
+.login-title h2 {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 800;
+    color: #C8FFD4;
+    margin: 0;
+}
+
+.login-title p {
+    text-align: center;
+    font-size: 14px;
+    margin-top: 4px;
+    font-weight: 600;
+    color: #9CF3B3;
+}
+
+/* Form */
+.login-form {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.input-group label {
+    color: #C8FFD4;
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #0E2F15;
+    border: 1px solid #1A5A20;
+    color: white;
+    font-size: 15px;
+    outline: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+.input-group input:focus {
+    border-color: #31D67B;
+    box-shadow: 0 0 0 2px rgba(49,214,123,0.5);
+}
+
+/* Forgot password */
+.forgot-link {
+    font-size: 13px;
+    color: #9CF3B3;
+    display: inline-block;
+    margin-top: 6px;
+    text-decoration: none;
+}
+
+.forgot-link:hover {
+    text-decoration: underline;
+}
+
+/* Remember */
+.remember {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #C8FFD4;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Button */
+.login-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    font-weight: 700;
+    background: #31D67B;
+    color: #0B260F;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+    transition: 0.2s;
+}
+
+.login-btn:hover {
+    background: #2CB86D;
+}
+
+.login-btn:active {
+    transform: scale(0.98);
+}
+
+/* Register link */
+.register-text {
+    text-align: center;
+    font-size: 14px;
+    margin-top: 20px;
+    color: #9CF3B3;
+}
+
+.register-text a {
+    font-weight: 700;
+    color: #C8FFD4;
+    text-decoration: none;
+}
+
+.register-text a:hover {
+    text-decoration: underline;
+}
+
+</style>
+<div class="login-wrapper">
+    <div class="login-card">
+
+        <div class="login-title">
+            <h2>Welcome Back</h2>
+            <p>Sign in to your account</p>
         </div>
 
-        <!-- Login Form -->
-        <form wire:submit="login" method="POST" class="space-y-5">
+        <form wire:submit="login" method="POST" class="login-form">
 
-            <!-- Email -->
-            <div>
-                <label class="block font-semibold mb-1 text-[#C8FFD4]">Email</label>
-                <input
-                    wire:model="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    class="w-full rounded-lg px-4 py-2 bg-[#0E2F15] border border-[#1A5A20]
-                           text-white shadow-md focus:ring-2 focus:ring-[#31D67B] 
-                           outline-none transition-all"
-                >
+            <div class="input-group">
+                <label>Email</label>
+                <input wire:model="email" type="email" placeholder="you@example.com">
             </div>
 
-            <!-- Password -->
-            <div>
-                <label class="block font-semibold mb-1 text-[#C8FFD4]">Password</label>
-                <input
-                    wire:model="password"
-                    type="password"
-                    placeholder="••••••••"
-                    class="w-full rounded-lg px-4 py-2 bg-[#0E2F15] border border-[#1A5A20]
-                           text-white shadow-md focus:ring-2 focus:ring-[#31D67B] 
-                           outline-none transition-all"
-                >
+            <div class="input-group">
+                <label>Password</label>
+                <input wire:model="password" type="password" placeholder="••••••••">
 
                 @if (Route::has('password.request'))
-                    <a href="{{ route('password.request') }}" wire:navigate
-                       class="text-sm font-medium mt-1 inline-block text-[#9CF3B3] hover:underline">
-                        Forgot Password?
-                    </a>
+                <a href="{{ route('password.request') }}" wire:navigate class="forgot-link">Forgot Password?</a>
                 @endif
             </div>
 
-            <!-- Remember -->
-            <label class="flex items-center gap-2 text-sm font-medium text-[#C8FFD4]">
-                <input type="checkbox" wire:model="remember" class="accent-[#31D67B]">
+            <label class="remember">
+                <input type="checkbox" wire:model="remember">
                 Remember me
             </label>
 
-            <!-- Login Button -->
-            <button
-                type="submit"
-                class="w-full py-3 rounded-xl font-bold text-[#0B260F] shadow-lg transition-all
-                       bg-[#31D67B] hover:bg-[#2CB86D] active:scale-[0.98]"
-            >
-                Log In
-            </button>
+            <button type="submit" class="login-btn">Log In</button>
         </form>
 
-        <!-- Register -->
-        <div class="text-center text-sm mt-6 text-[#9CF3B3]">
+        <div class="register-text">
             Don't have an account?
-            <a href="{{ route('register') }}" wire:navigate
-               class="font-semibold text-[#C8FFD4] hover:underline">
-                Create one
-            </a>
+            <a href="{{ route('register') }}" wire:navigate>Create one</a>
         </div>
+
     </div>
 </div>
