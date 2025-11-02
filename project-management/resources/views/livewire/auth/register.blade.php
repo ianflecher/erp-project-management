@@ -65,10 +65,11 @@ new #[Layout('components.layouts.landingapp')] class extends Component {
     }
 };
 ?>
+<div class="flex justify-center items-center min-h-screen bg-gray-100 p-4">
 
-<div class="flex justify-center items-center min-h-screen bg-green-900 p-4">
-    <div class="w-full max-w-md bg-[#124116] rounded-3xl shadow-xl p-8 text-white">
-        <h2 class="text-2xl font-bold mb-2 text-white">Create an account</h2>
+    <div class="w-full max-w-md bg-[#124116]/95 backdrop-blur-lg shadow-2xl rounded-2xl p-8 border border-[#1A5A20] text-white">
+
+        <h2 class="text-2xl font-bold mb-2">Create an account</h2>
         <p class="text-green-200 mb-6">Follow the steps to complete registration</p>
 
         @if(session('status'))
@@ -79,36 +80,42 @@ new #[Layout('components.layouts.landingapp')] class extends Component {
 
         <form method="POST" wire:submit.prevent="{{ $step === 1 ? 'nextStep' : 'register' }}" class="flex flex-col gap-5">
 
+            {{-- Step 1 --}}
             @if($step === 1)
                 <div class="space-y-4">
+
                     <div>
-                        <label class="block mb-2 font-semibold text-white">Full Name</label>
+                        <label class="block mb-2 font-semibold">Full Name</label>
                         <input type="text" wire:model="name" required autofocus
-                               placeholder="Juan Dela Cruz"
-                               class="w-full bg-[#1f3a21] text-white rounded-xl p-3 placeholder-green-200 focus:ring-2 focus:ring-green-400 focus:outline-none" />
+                            placeholder="Juan Dela Cruz"
+                            class="w-full rounded-xl p-3 bg-[#0E2F15] border border-[#1A5A20] text-white placeholder-green-300 focus:ring-2 focus:ring-[#31D67B]">
                     </div>
 
                     <div>
-                        <label class="block mb-2 font-semibold text-white">Email Address</label>
+                        <label class="block mb-2 font-semibold">Email Address</label>
                         <input type="email" wire:model="email" required
-                               placeholder="email@example.com"
-                               class="w-full bg-[#1f3a21] text-white rounded-xl p-3 placeholder-green-200 focus:ring-2 focus:ring-green-400 focus:outline-none" />
+                            placeholder="email@example.com"
+                            class="w-full rounded-xl p-3 bg-[#0E2F15] border border-[#1A5A20] text-white placeholder-green-300 focus:ring-2 focus:ring-[#31D67B]">
                     </div>
 
                     <div class="flex justify-end">
-                        <button type="submit" class="bg-green-800 hover:bg-green-700 text-white font-semibold py-2 px-8 rounded-2xl transition duration-200">
+                        <button type="submit"
+                            class="bg-[#31D67B] hover:bg-[#2CB86D] text-[#0B260F] font-bold py-2 px-8 rounded-xl transition">
                             Next
                         </button>
                     </div>
+
                 </div>
             @endif
 
+            {{-- Step 2 --}}
             @if($step === 2)
                 <div class="space-y-4">
+
                     <div>
-                        <label class="block mb-2 font-semibold text-white">Role</label>
+                        <label class="block mb-2 font-semibold">Role</label>
                         <select wire:model="role" required
-                                class="w-full bg-[#1f3a21] text-white rounded-xl p-3 placeholder-green-200 focus:ring-2 focus:ring-green-400 focus:outline-none">
+                            class="w-full rounded-xl p-3 bg-[#0E2F15] border border-[#1A5A20] text-white focus:ring-2 focus:ring-[#31D67B]">
                             <option value="">Select Role</option>
                             <option value="Manager">Manager</option>
                             <option value="Employee">Employee</option>
@@ -116,22 +123,25 @@ new #[Layout('components.layouts.landingapp')] class extends Component {
                     </div>
 
                     <div>
-                        <label class="block mb-2 font-semibold text-white">Password</label>
+                        <label class="block mb-2 font-semibold">Password</label>
                         <input type="password" wire:model="password" required placeholder="Password"
-                               class="w-full bg-[#1f3a21] text-white rounded-xl p-3 placeholder-green-200 focus:ring-2 focus:ring-green-400 focus:outline-none" />
+                            class="w-full rounded-xl p-3 bg-[#0E2F15] border border-[#1A5A20] text-white placeholder-green-300 focus:ring-2 focus:ring-[#31D67B]">
                     </div>
 
                     <div>
-                        <label class="block mb-2 font-semibold text-white">Confirm Password</label>
+                        <label class="block mb-2 font-semibold">Confirm Password</label>
                         <input type="password" wire:model="password_confirmation" required placeholder="Confirm password"
-                               class="w-full bg-[#1f3a21] text-white rounded-xl p-3 placeholder-green-200 focus:ring-2 focus:ring-green-400 focus:outline-none" />
+                            class="w-full rounded-xl p-3 bg-[#0E2F15] border border-[#1A5A20] text-white placeholder-green-300 focus:ring-2 focus:ring-[#31D67B]">
                     </div>
 
                     <div class="flex justify-between">
-                        <button type="button" wire:click="prevStep" class="bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-6 rounded-2xl transition duration-200">
+                        <button type="button" wire:click="prevStep"
+                            class="bg-green-700 hover:bg-green-600 text-white font-semibold py-2 px-6 rounded-xl transition">
                             Back
                         </button>
-                        <button type="submit" class="bg-green-800 hover:bg-green-700 text-white font-semibold py-2 px-8 rounded-2xl transition duration-200">
+
+                        <button type="submit"
+                            class="bg-[#31D67B] hover:bg-[#2CB86D] text-[#0B260F] font-bold py-2 px-8 rounded-xl transition">
                             Register
                         </button>
                     </div>
@@ -141,8 +151,10 @@ new #[Layout('components.layouts.landingapp')] class extends Component {
         </form>
 
         <div class="text-center text-sm text-green-200 mt-6">
-            <span>Already have an account?</span>
-            <a href="{{ route('login') }}" class="font-medium text-green-300 hover:text-white">Log in</a>
+            Already have an account?
+            <a href="{{ route('login') }}" class="font-semibold text-[#C8FFD4] hover:underline">
+                Log in
+            </a>
         </div>
     </div>
 </div>

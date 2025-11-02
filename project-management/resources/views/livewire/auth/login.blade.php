@@ -81,11 +81,9 @@ new #[Layout('components.layouts.landingapp')] class extends Component
     }
 };
 ?>
+<div class="min-h-screen flex items-center justify-center p-6 bg-gray-100">
 
-
-<!-- Login Blade / Livewire view -->
-<div class="min-h-screen flex items-center justify-center bg-[#0B260F] p-6">
-    <div class="w-full max-w-md bg-[#124116]/95 backdrop-blur-lg shadow-2xl rounded-2xl p-8 border border-[#1A5A20]">
+    <div class="w-full max-w-md bg-[#124116]/95 backdrop-blur-xl shadow-2xl rounded-2xl p-8 border border-[#1A5A20]">
 
         <!-- Title -->
         <div class="text-center mb-8">
@@ -98,7 +96,7 @@ new #[Layout('components.layouts.landingapp')] class extends Component
         </div>
 
         <!-- Login Form -->
-        <form wire:submit.prevent="login" class="space-y-5">
+        <form wire:submit="login" method="POST" class="space-y-5">
 
             <!-- Email -->
             <div>
@@ -108,7 +106,7 @@ new #[Layout('components.layouts.landingapp')] class extends Component
                     type="email"
                     placeholder="you@example.com"
                     class="w-full rounded-lg px-4 py-2 bg-[#0E2F15] border border-[#1A5A20]
-                           text-white shadow-inner focus:ring-2 focus:ring-[#31D67B] 
+                           text-white shadow-md focus:ring-2 focus:ring-[#31D67B] 
                            outline-none transition-all"
                 >
             </div>
@@ -121,14 +119,21 @@ new #[Layout('components.layouts.landingapp')] class extends Component
                     type="password"
                     placeholder="••••••••"
                     class="w-full rounded-lg px-4 py-2 bg-[#0E2F15] border border-[#1A5A20]
-                           text-white shadow-inner focus:ring-2 focus:ring-[#31D67B] 
+                           text-white shadow-md focus:ring-2 focus:ring-[#31D67B] 
                            outline-none transition-all"
                 >
+
+                @if (Route::has('password.request'))
+                    <a href="{{ route('password.request') }}" wire:navigate
+                       class="text-sm font-medium mt-1 inline-block text-[#9CF3B3] hover:underline">
+                        Forgot Password?
+                    </a>
+                @endif
             </div>
 
-            <!-- Remember Me -->
+            <!-- Remember -->
             <label class="flex items-center gap-2 text-sm font-medium text-[#C8FFD4]">
-                <input type="checkbox" wire:model="remember" style="accent-color:#31D67B;">
+                <input type="checkbox" wire:model="remember" class="accent-[#31D67B]">
                 Remember me
             </label>
 
@@ -141,11 +146,6 @@ new #[Layout('components.layouts.landingapp')] class extends Component
                 Log In
             </button>
         </form>
-        @error('email')
-<div class="mt-4 bg-red-600/20 text-red-300 border border-red-600 rounded-lg p-3 text-sm text-center">
-    {{ $message }}
-</div>
-@enderror
 
         <!-- Register -->
         <div class="text-center text-sm mt-6 text-[#9CF3B3]">

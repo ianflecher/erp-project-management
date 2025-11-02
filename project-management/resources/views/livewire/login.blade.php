@@ -79,16 +79,16 @@ new #[Layout('components.layouts.landingapp')] class extends Component {
     }
 };
 ?>
-<div class="min-h-screen flex items-center justify-center bg-[#0B260F] p-6">
+<div class="min-h-screen flex items-center justify-center p-6 bg-gray-100">
 
-    <div class="w-full max-w-md bg-[#124116]/95 backdrop-blur-lg shadow-2xl rounded-2xl p-8 border border-[#1A5A20]">
+    <div class="w-full max-w-md bg-white shadow-xl rounded-2xl p-8 border border-gray-200">
 
         <!-- Title -->
         <div class="text-center mb-8">
-            <h2 class="text-3xl font-extrabold tracking-tight text-[#C8FFD4]">
+            <h2 class="text-3xl font-extrabold tracking-tight text-gray-800">
                 Welcome Back
             </h2>
-            <p class="text-sm mt-1 font-medium text-[#9CF3B3]">
+            <p class="text-sm mt-1 font-medium text-gray-500">
                 Sign in to your account
             </p>
         </div>
@@ -98,57 +98,58 @@ new #[Layout('components.layouts.landingapp')] class extends Component {
 
             <!-- Email -->
             <div>
-                <label class="block font-semibold mb-1 text-[#C8FFD4]">Email</label>
+                <label class="block font-semibold mb-1 text-gray-700">Email</label>
                 <input
                     wire:model="email"
                     type="email"
                     placeholder="you@example.com"
-                    class="w-full rounded-lg px-4 py-2 bg-[#0E2F15] border border-[#1A5A20]
-                           text-white shadow-inner focus:ring-2 focus:ring-[#31D67B] 
+                    class="w-full rounded-lg px-4 py-2 bg-gray-50 border border-gray-300
+                           text-gray-900 shadow-sm focus:ring-2 focus:ring-blue-500 
                            outline-none transition-all"
                 >
             </div>
 
             <!-- Password -->
             <div>
-                <label class="block font-semibold mb-1 text-[#C8FFD4]">Password</label>
+                <label class="block font-semibold mb-1 text-gray-700">Password</label>
                 <input
                     wire:model="password"
                     type="password"
                     placeholder="••••••••"
-                    class="w-full rounded-lg px-4 py-2 bg-[#0E2F15] border border-[#1A5A20]
-                           text-white shadow-inner focus:ring-2 focus:ring-[#31D67B] 
+                    class="w-full rounded-lg px-4 py-2 bg-gray-50 border border-gray-300
+                           text-gray-900 shadow-sm focus:ring-2 focus:ring-blue-500 
                            outline-none transition-all"
                 >
+
                 @if (Route::has('password.request'))
                     <a href="{{ route('password.request') }}" wire:navigate
-                       class="text-sm font-medium mt-1 inline-block text-[#9CF3B3] hover:underline">
+                       class="text-sm font-medium mt-1 inline-block text-blue-600 hover:underline">
                         Forgot Password?
                     </a>
                 @endif
             </div>
 
             <!-- Remember -->
-            <label class="flex items-center gap-2 text-sm font-medium text-[#C8FFD4]">
-                <input type="checkbox" wire:model="remember" style="accent-color:#31D67B;">
+            <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input type="checkbox" wire:model="remember" class="accent-blue-600">
                 Remember me
             </label>
 
             <!-- Login Button -->
             <button
                 type="submit"
-                class="w-full py-3 rounded-xl font-bold text-[#0B260F] shadow-lg transition-all
-                       bg-[#31D67B] hover:bg-[#2CB86D] active:scale-[0.98]"
+                class="w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all
+                       bg-blue-600 hover:bg-blue-700 active:scale-[0.98]"
             >
                 Log In
             </button>
         </form>
 
         <!-- Register -->
-        <div class="text-center text-sm mt-6 text-[#9CF3B3]">
+        <div class="text-center text-sm mt-6 text-gray-600">
             Don't have an account?
             <a href="{{ route('register') }}" wire:navigate
-               class="font-semibold text-[#C8FFD4] hover:underline">
+               class="font-semibold text-blue-600 hover:underline">
                 Create one
             </a>
         </div>

@@ -138,7 +138,7 @@ DB::table('journal_entries')->insert([
     'date' => now()->toDateString(),
     'reference_no' => $referenceNo,
     'description' => 'Budget allocated for Task ID ' . $task->task_id,
-    'created_by' => $createdBy, // numeric ID
+    'created_by' => Auth::id(), // numeric ID
     'created_at' => now(),
     'updated_at' => now(),
 ]);
@@ -280,6 +280,18 @@ private function getPhaseIdByTask($taskId)
     // 7️⃣ Set remaining budget
     $this->editingAllocation['remaining_budget'] = $project->budget_total - $currentSpent;
 }
+
+public function submitBudgetAndPauseProject($taskId, $projectId, $budget)
+{
+
+
+    // 2️⃣ Change project status to 'Paused'
+    DB::table('projects')->where('project_id', $projectId)->update([
+        'status' => 'Paused',
+        'updated_at' => now(),
+    ]);
+}
+
 
 
    public function updatedAllocatedQuantity($value)
@@ -489,26 +501,62 @@ public function deleteResource($resourceId)
 
 public function deleteAllocation($allocationId)
 {
-    // Get the allocation first
+    // 1️⃣ Fetch the allocation
     $allocation = DB::table('resource_allocations')
         ->where('allocation_id', $allocationId)
         ->first();
 
     if (!$allocation) return;
 
-    // Add the allocated quantity back to the resource
+    // 2️⃣ Restore resource availability
     DB::table('resources')
         ->where('resource_id', $allocation->resource_id)
         ->increment('availability_quantity', $allocation->allocated_quantity);
 
-    // Delete the allocation
+    // 3️⃣ Delete allocation
     DB::table('resource_allocations')
         ->where('allocation_id', $allocationId)
         ->delete();
 
-    // Reload tasks/resources
+    // 4️⃣ Recalculate task actual cost & variance
+    $task = DB::table('tasks')->where('task_id', $allocation->task_id)->first();
+    if (!$task) return;
+
+    $phase = DB::table('project_phases')->where('phase_id', $task->phase_id)->first();
+    $project = DB::table('projects')->where('project_id', $phase->project_id)->first();
+
+    $taskActualCost = DB::table('resource_allocations')
+        ->where('task_id', $task->task_id)
+        ->sum('cost');
+
+    $taskBudget = DB::table('budgets')->where([
+        'project_id' => $project->project_id,
+        'phase_id' => $phase->phase_id,
+        'task_id' => $task->task_id,
+    ])->first();
+
+    $estimated = $taskBudget->estimated_cost ?? 0;
+    $variance = $estimated - $taskActualCost;
+
+    DB::table('budgets')->updateOrInsert(
+        [
+            'project_id' => $project->project_id,
+            'phase_id' => $phase->phase_id,
+            'task_id' => $task->task_id,
+        ],
+        [
+            'actual_cost' => $taskActualCost,
+            'variance' => $variance,
+            'updated_at' => now(),
+        ]
+    );
+
+    // 5️⃣ Reload tasks/resources
     $this->loadTasksForAllProjects();
+
+    session()->flash('success', 'Allocation deleted and budget updated successfully!');
 }
+
 
 
 public function getFilteredProjectsProperty()
@@ -652,30 +700,20 @@ public function closeAllocationModal()
         return;
     }
 
-    // 3️⃣ Fetch phase
+    // 3️⃣ Fetch phase & project
     $phase = DB::table('project_phases')->where('phase_id', $task->phase_id)->first();
-    if (!$phase) {
-        $this->addError('allocatedQuantity', 'Project phase not found.');
-        return;
-    }
-
-    // 4️⃣ Fetch project
     $project = DB::table('projects')->where('project_id', $phase->project_id)->first();
-    if (!$project) {
-        $this->addError('allocatedQuantity', 'Project not found.');
-        return;
-    }
 
-    // 5️⃣ Compute total cost
+    // 4️⃣ Compute total cost for this allocation
     $totalCost = $this->allocatedQuantity * $resource->unit_cost;
 
-    // 6️⃣ Check stock
+    // 5️⃣ Check stock
     if ($this->allocatedQuantity > $resource->availability_quantity) {
         $this->addError('allocatedQuantity', "Insufficient stock. Available: {$resource->availability_quantity}");
         return;
     }
 
-    // 7️⃣ Compute current spent & remaining budget
+    // 6️⃣ Check remaining project budget
     $currentSpent = DB::table('resource_allocations as ra')
         ->join('tasks as t', 'ra.task_id', '=', 't.task_id')
         ->join('project_phases as pp', 't.phase_id', '=', 'pp.phase_id')
@@ -691,24 +729,63 @@ public function closeAllocationModal()
         return;
     }
 
-    // 8️⃣ Insert allocation
-    DB::table('resource_allocations')->insert([
-        'task_id' => $task->task_id,
-        'resource_id' => $resource->resource_id,
-        'allocated_quantity' => $this->allocatedQuantity,
-        'allocation_date' => now(),
-        'cost' => $totalCost,
-    ]);
+    // 7️⃣ Check if allocation already exists for this task + resource
+    $existingAllocation = DB::table('resource_allocations')
+        ->where('task_id', $task->task_id)
+        ->where('resource_id', $resource->resource_id)
+        ->first();
 
-    // 9️⃣ Update task-level actual cost in budgets
-$taskActualCost = DB::table('resource_allocations')
-    ->where('task_id', $task->task_id)
-    ->sum('cost');
+    if ($existingAllocation) {
+        // Update existing allocation quantity & cost
+        DB::table('resource_allocations')
+            ->where('allocation_id', $existingAllocation->allocation_id)
+            ->update([
+                'allocated_quantity' => $existingAllocation->allocated_quantity + $this->allocatedQuantity,
+                'cost' => $existingAllocation->cost + $totalCost,
+                'allocation_date' => now(),
+            ]);
+    } else {
+        // Insert new allocation
+        DB::table('resource_allocations')->insert([
+            'task_id' => $task->task_id,
+            'resource_id' => $resource->resource_id,
+            'allocated_quantity' => $this->allocatedQuantity,
+            'allocation_date' => now(),
+            'cost' => $totalCost,
+        ]);
+    }
 
-    // 9️⃣ Update resource availability
+    // 8️⃣ Update resource availability
     DB::table('resources')
         ->where('resource_id', $resource->resource_id)
         ->decrement('availability_quantity', $this->allocatedQuantity);
+
+    // 9️⃣ Update task budget actual cost & variance
+    $taskActualCost = DB::table('resource_allocations')
+        ->where('task_id', $task->task_id)
+        ->sum('cost');
+
+    $taskBudget = DB::table('budgets')->where([
+        'project_id' => $project->project_id,
+        'phase_id' => $phase->phase_id,
+        'task_id' => $task->task_id,
+    ])->first();
+
+    $estimated = $taskBudget->estimated_cost ?? 0;
+    $variance = $estimated - $taskActualCost;
+
+    DB::table('budgets')->updateOrInsert(
+        [
+            'project_id' => $project->project_id,
+            'phase_id' => $phase->phase_id,
+            'task_id' => $task->task_id,
+        ],
+        [
+            'actual_cost' => $taskActualCost,
+            'variance' => $variance,
+            'updated_at' => now(),
+        ]
+    );
 
     // 🔟 Reset modal & fields
     $this->loadResources();
@@ -718,29 +795,6 @@ $taskActualCost = DB::table('resource_allocations')
     $this->totalCost = 0;
     $this->remainingBudget = 0;
     $this->showAllocationModal = false;
-
-    $taskBudget = DB::table('budgets')->where([
-    'project_id' => $project->project_id,
-    'phase_id' => $phase->phase_id,
-    'task_id' => $task->task_id,
-])->first();
-
-$estimated = $taskBudget->estimated_cost ?? 0;
-$variance = $estimated - $taskActualCost;
-
-DB::table('budgets')->updateOrInsert(
-    [
-        'project_id' => $project->project_id,
-        'phase_id' => $phase->phase_id,
-        'task_id' => $task->task_id,
-    ],
-    [
-        'actual_cost' => $taskActualCost,
-        'variance' => $variance,
-        'updated_at' => now(),
-    ]
-);
-
 
     session()->flash('success', 'Allocation saved successfully!');
 }
@@ -1007,11 +1061,11 @@ DB::table('budgets')->updateOrInsert(
                         onclick="document.getElementById('budgetModal{{ $t->task_id }}').classList.add('hidden')">&times;</button>
 
                 <h2 class="text-lg font-bold mb-4">Request Budget Change</h2>
-                <input type="text" placeholder="Enter new budget" class="w-full border rounded p-2 mb-6">
+                <input type="text" id="budgetInput{{ $t->task_id }}" placeholder="Enter new budget" class="w-full border rounded p-2 mb-6">
 
                 <div class="flex justify-center gap-4">
                     <button class="phase-btn phase-btn-green px-8 py-3 text-lg font-semibold"
-                            onclick="openWaitingModal({{ $t->task_id }})">
+                            onclick="submitBudget({{ $t->task_id }}, {{ $p->project_id }})">
                         Submit
                     </button>
                 </div>
@@ -1033,11 +1087,15 @@ DB::table('budgets')->updateOrInsert(
         </div>
 
         <script>
-            function openWaitingModal(taskId) {
-                // Hide the budget modal
+            function submitBudget(taskId, projectId) {
+                const budgetValue = document.getElementById(`budgetInput${taskId}`).value;
+
+                // Hide budget modal, show waiting modal
                 document.getElementById(`budgetModal${taskId}`).classList.add('hidden');
-                // Show waiting modal
                 document.getElementById(`waitingModal${taskId}`).classList.remove('hidden');
+
+                // Call Livewire to save budget and pause project
+                @this.call('submitBudgetAndPauseProject', taskId, projectId, budgetValue);
             }
         </script>
     @else

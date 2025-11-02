@@ -49,7 +49,7 @@ new #[Layout('components.layouts.app')] class extends Component
     <h2 class="task-title">💲 Actual Costs for Task: {{ $task->task_name ?? 'N/A' }}</h2>
 
     <!-- Costs by Type -->
-    @foreach(['Labor', 'Materials', 'Overhead', 'Tool', 'Facility'] as $type)
+    @foreach(['Labor', 'Materials','Tool'] as $type)
         <div class="cost-card">
             
             <!-- Type Header -->

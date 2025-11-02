@@ -106,6 +106,19 @@ new #[Layout('components.layouts.app')] class extends Component
         }
     }
 
+    public function resumeProject($projectId)
+{
+    DB::table('projects')
+        ->where('project_id', $projectId)
+        ->update([
+            'status' => 'Pending',  // or whatever default active status you want
+            'updated_at' => now()
+        ]);
+
+    $this->loadProjects();
+}
+
+
     public function closeEditModal() { $this->showEditModal = false; $this->editProject = []; }
 
     public function updateProject()
@@ -203,55 +216,67 @@ new #[Layout('components.layouts.app')] class extends Component
             <th style="padding:8px; text-align:center;">Actions</th>
         </tr>
     </thead>
+<tbody>
+    @foreach ($projects as $p)
+        @php
+            $isPaused = $p->status === 'Paused';
+        @endphp
+        <tr style="border-bottom:1px solid #eee; {{ $isPaused ? 'background-color:#e0e0e0;color:#666;' : '' }}">
+            <td style="padding:8px;">{{ $p->project_name }}</td>
+            <td style="padding:8px;">{{ $p->description }}</td>
+            <td style="padding:8px;">{{ $p->start_date }}</td>
+            <td style="padding:8px;">{{ $p->end_date }}</td>
+            <td style="padding:8px;">{{ $p->status }}</td>
+            <td style="padding:8px;">₱{{ number_format($p->budget_total, 2) }}</td>
+            <td style="padding:8px;">{{ $p->manager_name ?? 'Unknown' }}</td>
 
-    <tbody>
-        @foreach ($projects as $p)
-            <tr style="border-bottom:1px solid #eee;">
-                <td style="padding:8px;">{{ $p->project_name }}</td>
-                <td style="padding:8px;">{{ $p->description }}</td>
-                <td style="padding:8px;">{{ $p->start_date }}</td>
-                <td style="padding:8px;">{{ $p->end_date }}</td>
-                <td style="padding:8px;">{{ $p->status }}</td>
-                <td style="padding:8px;">₱{{ number_format($p->budget_total, 2) }}</td>
-                <td style="padding:8px;">{{ $p->manager_name ?? 'Unknown' }}</td>
-
+            @if($isPaused)
+                <!-- Centered Resume Button -->
+                <td colspan="4" style="text-align:center; padding:8px;">
+                    <button wire:click="resumeProject({{ $p->project_id }})" class="phase-btn phase-btn-green">
+                        Resume
+                    </button>
+                </td>
+            @else
                 <!-- Member -->
                 <td>
-                            <a href="{{ route('projects.members', ['project_id' => $p->project_id]) }}" class="phase-btn phase-btn-green">
-                                View
-                            </a>
-                        </td>
+                    <a href="{{ route('projects.members', ['project_id' => $p->project_id]) }}" class="phase-btn phase-btn-green">
+                        View
+                    </a>
+                </td>
 
                 <!-- Phases -->
                 <td>
-                            <a href="{{ route('projects.phase', ['project_id' => $p->project_id]) }}" class="phase-btn phase-btn-green">
-                                View
-                            </a>
-                        </td>
+                    <a href="{{ route('projects.phase', ['project_id' => $p->project_id]) }}" class="phase-btn phase-btn-green">
+                        View
+                    </a>
+                </td>
 
                 <!-- Gantt -->
                 <td>
-                            <button onclick="loadGantt({{ $p->project_id }})" class="phase-btn phase-btn-green">
-                                View
-                            </button>
-                        </td>
+                    <button onclick="loadGantt({{ $p->project_id }})" class="phase-btn phase-btn-green">
+                        View
+                    </button>
+                </td>
 
                 <!-- Actions -->
                 <td style="padding:8px;text-align:center;">
-    <div style="display:flex;justify-content:center;align-items:center;gap:0.3rem;">
-        <button wire:click="openEditModal({{ $p->project_id }})"
-            class="phase-btn phase-btn-yellow"  >
-            Edit
-        </button>
-        <button wire:click="confirmDelete({{ $p->project_id }})"
-            class="phase-btn phase-btn-red">
-            Delete
-        </button>
-    </div>
-</td>
-            </tr>
-        @endforeach
-    </tbody>
+                    <div style="display:flex;justify-content:center;align-items:center;gap:0.3rem;">
+                        <button wire:click="openEditModal({{ $p->project_id }})"
+                                class="phase-btn phase-btn-yellow">
+                            Edit
+                        </button>
+                        <button wire:click="confirmDelete({{ $p->project_id }})"
+                                class="phase-btn phase-btn-red">
+                            Delete
+                        </button>
+                    </div>
+                </td>
+            @endif
+        </tr>
+    @endforeach
+</tbody>
+
 </table>
 
 
