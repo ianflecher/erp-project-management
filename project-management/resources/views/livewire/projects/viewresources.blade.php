@@ -21,8 +21,6 @@ new #[Layout('components.layouts.app')] class extends Component
     public float $availability_quantity = 0.00;
     public string $status = '';
     public ?int $inventory_id = null;
-    public array $groupedResources = [];
-
 
     // Helpers
     public bool $isLabor = false;
@@ -83,21 +81,14 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 
     public function loadResources()
-{
-    $this->resources = DB::table('resources')
-        ->leftJoin('inventories', 'resources.inventory_id', '=', 'inventories.id')
-        ->select('resources.*', 'inventories.name as inventory_name', 'inventories.quantity as inventory_qty')
-        ->orderByDesc('resource_id')
-        ->get()
-        ->toArray();
-
-    // Group by type
-    $this->groupedResources = [];
-    foreach ($this->resources as $r) {
-        $typeKey = $r->type ?: 'Others';
-        $this->groupedResources[$typeKey][] = $r;
+    {
+        $this->resources = DB::table('resources')
+            ->leftJoin('inventories', 'resources.inventory_id', '=', 'inventories.id')
+            ->select('resources.*', 'inventories.name as inventory_name', 'inventories.quantity as inventory_qty')
+            ->orderByDesc('resource_id')
+            ->get()
+            ->toArray();
     }
-}
 
     public function openAddModal()
     {
@@ -182,218 +173,63 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 }
 ?>
-
-<style>
-/* Container */
-.resources-container {
-    font-family: 'Segoe UI', sans-serif;
-    padding: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
-    background: #f7f9f7;
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-/* Header */
-.task-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-}
-
-.task-header h2 {
-    color: #2f7a2f;
-    font-weight: 700;
-}
-
-.back-link {
-    color: #2f7a2f;
-    font-weight: 500;
-    text-decoration: none;
-}
-
-.resources-btn {
-    padding: 0.6rem 1rem;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.resources-btn-green {
-    background-color: #2f7a2f;
-    color: #fff;
-}
-
-.resources-btn-green:hover {
-    background-color: #1e5c1e;
-}
-
-.resources-btn-yellow {
-    background-color: #f4c542;
-    color: #000;
-}
-
-.resources-btn-red {
-    background-color: #e74c3c;
-    color: #fff;
-}
-
-.resources-btn-gray {
-    background-color: #bdc3c7;
-    color: #fff;
-}
-
-/* Tables */
-.resources-table-wrapper {
-    margin-top: 1rem;
-}
-
-.resources-type-header {
-    margin-top: 2rem;
-    color: #2f7a2f;
-    border-bottom: 2px solid #2f7a2f;
-    padding-bottom: 0.2rem;
-}
-
-.resources-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 0.5rem;
-}
-
-.resources-table th, .resources-table td {
-    padding: 0.8rem 1rem;
-    text-align: left;
-    border-bottom: 1px solid #d1e7d1;
-}
-
-.resources-status {
-    padding: 0.3rem 0.6rem;
-    border-radius: 6px;
-    font-weight: 500;
-    display: inline-block;
-}
-
-.resources-status.active { background-color: #2ecc71; color: #fff; }
-.resources-status.unavailable { background-color: #e74c3c; color: #fff; }
-.resources-status.maintenance { background-color: #f39c12; color: #fff; }
-.resources-status.reserved { background-color: #3498db; color: #fff; }
-
-/* Modal */
-.resources-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(47, 122, 47, 0.5);
-    justify-content: center;
-    align-items: center;
-    z-index: 999;
-}
-
-.resources-modal-box {
-    background: #fff;
-    border-radius: 12px;
-    padding: 2rem;
-    width: 500px;
-    max-width: 95%;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-}
-
-.resources-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-}
-
-.resources-close-btn {
-    background: transparent;
-    border: none;
-    font-size: 1.2rem;
-    cursor: pointer;
-    color: #2f7a2f;
-}
-
-.resources-form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-}
-
-.resources-form-grid label {
-    display: flex;
-    flex-direction: column;
-    font-weight: 500;
-}
-
-.resources-form-grid input,
-.resources-form-grid select {
-    margin-top: 0.3rem;
-    padding: 0.5rem;
-    border-radius: 6px;
-    border: 1px solid #cfd8cf;
-}
-
-.resources-modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
-}
-</style>
-
 <div class="resources-container">
 
-    <div class="task-header">
+    <div class="task-header" style="display:flex;justify-content:space-between;align-items:center;">
         <a href="javascript:history.back()" class="back-link">← Back</a>
         <h2>Resources Management</h2>
         <button class="resources-btn resources-btn-green" wire:click="openAddModal">+ Add Resource</button>
     </div>
 
-    <div class="resources-table-wrapper">
-        @if(count($resources))
-            @foreach($groupedResources as $type => $resGroup)
-                <h3 class="resources-type-header">{{ $type }}</h3>
-                <table class="resources-table">
-                    <thead>
+@php
+$grouped = collect($resources)->groupBy(function($r){
+    return ucfirst(strtolower($r->type));
+});
+@endphp
+
+<div class="resources-table-wrapper">
+
+    @foreach($grouped as $type => $items)
+        <h3 style="margin-top:20px; color:#2c3e50;">{{ $type }}</h3>
+
+        @if(count($items))
+            <table class="resources-table">
+                <thead>
+                    <tr>
+                        <th>Resource Name</th>
+                        <th>Unit Cost</th>
+                        <th>Available Qty</th>
+                        <th>Status</th>
+                        <th style="width:160px;">Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach($items as $r)
                         <tr>
-                            <th>Resource Name</th>
-                            <th>Unit Cost</th>
-                            <th>Available Qty</th>
-                            <th>Status</th>
-                            <th style="width:160px;">Actions</th>
+                            <td>{{ $r->resource_name }}</td>
+                            <td>₱{{ number_format($r->unit_cost, 2) }}</td>
+                            <td>{{ $r->availability_quantity ?? 0 }}</td>
+                            <td>
+                                <span class="resources-status {{ strtolower($r->status) }}">
+                                    {{ $r->status }}
+                                </span>
+                            </td>
+                            <td class="resources-actions">
+                                <button wire:click="openEditModal({{ $r->resource_id }})" class="resources-btn resources-btn-yellow">Edit</button>
+                                <button wire:click="deleteResource({{ $r->resource_id }})" class="resources-btn resources-btn-red">Delete</button>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($resGroup as $r)
-                            <tr>
-                                <td>{{ $r->resource_name }}</td>
-                                <td>₱{{ number_format($r->unit_cost, 2) }}</td>
-                                <td>{{ $r->availability_quantity ?? 0 }}</td>
-                                <td>
-                                    <span class="resources-status {{ strtolower($r->status) }}">
-                                        {{ $r->status }}
-                                    </span>
-                                </td>
-                                <td class="resources-actions">
-                                    <button wire:click="openEditModal({{ $r->resource_id }})" class="resources-btn resources-btn-yellow">Edit</button>
-                                    <button wire:click="deleteResource({{ $r->resource_id }})" class="resources-btn resources-btn-red">Delete</button>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @endforeach
+                    @endforeach
+                </tbody>
+            </table>
         @else
-            <div class="resources-empty">No resources found.</div>
+            <div class="resources-empty">No items under {{ $type }}</div>
         @endif
-    </div>
+    @endforeach
+
+</div>
+
 
     <!-- Modal -->
     <div class="resources-modal" style="display: {{ $showResourceModal ? 'flex' : 'none' }};">
@@ -404,13 +240,16 @@ new #[Layout('components.layouts.app')] class extends Component
             </div>
 
             <form wire:submit.prevent="saveResource" class="resources-form">
-                <div class="resources-form-grid">
-                    <label>
+                <div class="resources-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+
+                    <!-- Resource Name -->
+                    <label style="grid-column:1 / span 2;">
                         <span>Resource Name</span>
                         <input type="text" wire:model="resource_name" placeholder="Enter resource name" required>
                     </label>
 
-                    <label>
+                    <!-- Resource Type -->
+                    <label style="grid-column:1 / span 2;">
                         <span>Resource Type</span>
                         <select wire:model.live="type" required>
                             <option value="">-- Select Type --</option>
@@ -420,8 +259,9 @@ new #[Layout('components.layouts.app')] class extends Component
                         </select>
                     </label>
 
+                    <!-- Inventory Dropdown -->
                     @if($type)
-                        <label>
+                        <label style="grid-column:1 / span 2;">
                             <span>Inventory Items (filtered by type)</span>
                             <select wire:model.live="inventory_id">
                                 <option value="">-- Select from inventory (optional) --</option>
@@ -437,7 +277,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         <input type="number" step="0.01" wire:model="unit_cost" required>
                     </label>
 
-                    <label>
+                    <label style="grid-column:1 / span 2;">
                         <span>Status</span>
                         <select wire:model="status" required>
                             <option value="">-- Select Status --</option>
@@ -449,11 +289,11 @@ new #[Layout('components.layouts.app')] class extends Component
                     </label>
                 </div>
 
-                <div class="resources-modal-actions">
+                <div class="resources-modal-actions" style="margin-top:1rem;">
                     <button type="submit" class="resources-btn resources-btn-green">{{ $editing_id ? 'Update' : 'Save' }}</button>
                     <button type="button" wire:click="closeResourceModal" class="resources-btn resources-btn-gray">Cancel</button>
                 </div>
             </form>
         </div>
     </div>
-</div>
+</div> 
