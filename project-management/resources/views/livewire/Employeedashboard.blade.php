@@ -95,25 +95,25 @@ public function acceptProject(int $projectId, string $role): void
 };
 ?>  
 
-<div class="min-h-screen p-6 bg-[#0B260F]">
-    <h1 class="text-3xl font-bold text-[#C8FFD4] mb-6">My Projects</h1>
+<div class="min-h-screen p-6 bg-white">
+    <h1 class="text-3xl font-bold text-black mb-6">My Projects</h1>
 
     {{-- Pending as Manager --}}
     @if(count($pendingAsManager))
-        <h2 class="text-xl text-yellow-300 font-semibold mb-2">Pending as Manager</h2>
+        <h2 class="text-xl text-gray-800 font-semibold mb-2">Pending as Manager</h2>
         <ul class="space-y-2 mb-6">
             @foreach($pendingAsManager as $project)
-                <li class="bg-[#124116] p-4 rounded-xl border border-[#1A5A20] flex justify-between items-center">
+                <li class="bg-gray-100 p-4 rounded-xl border border-gray-300 flex justify-between items-center">
                     <div>
-                        <h3 class="text-lg text-[#C8FFD4] font-bold">{{ $project->project_name }}</h3>
-                        <p class="text-gray-300 mb-1">{{ $project->description }}</p>
-                        <p class="text-sm text-gray-400">Start: {{ $project->start_date }} | End: {{ $project->end_date }}</p>
-                        <p class="text-sm text-yellow-300 font-semibold">Status: Pending Manager Approval</p>
+                        <h3 class="text-lg text-black font-bold">{{ $project->project_name }}</h3>
+                        <p class="text-gray-700 mb-1">{{ $project->description }}</p>
+                        <p class="text-sm text-gray-500">Start: {{ $project->start_date }} | End: {{ $project->end_date }}</p>
+                        <p class="text-sm text-gray-600 font-semibold">Status: Pending Manager Approval</p>
                     </div>
                     <div class="flex gap-2">
                         <button wire:click="acceptProject({{ $project->project_id }}, 'manager')" 
                                 class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl"
-                                @if($hasAcceptedProject) disabled class="bg-gray-500 cursor-not-allowed" @endif>
+                                @if($hasAcceptedProject) disabled class="bg-gray-400 cursor-not-allowed" @endif>
                             Accept
                         </button>
                         <button wire:click="declineProject({{ $project->project_id }}, 'manager')" 
@@ -126,51 +126,51 @@ public function acceptProject(int $projectId, string $role): void
         </ul>
     @endif
 
-   {{-- Pending as Member --}}
-@if(count($pendingAsMember))
-    <h2 class="text-xl text-yellow-300 font-semibold mb-2">Pending as Member</h2>
-    <ul class="space-y-2 mb-6">
-        @foreach($pendingAsMember as $project)
-            <li class="bg-[#124116] p-4 rounded-xl border border-[#1A5A20] flex justify-between items-center">
-                <div>
-                    <h3 class="text-lg text-[#C8FFD4] font-bold">{{ $project->project_name }}</h3>
-                    <p class="text-gray-300 mb-1">{{ $project->description }}</p>
-                    <p class="text-sm text-gray-400">Start: {{ $project->start_date }} | End: {{ $project->end_date }}</p>
-                    <p class="text-sm text-yellow-300 font-semibold">
-                        Status: 
-                        @if($project->employee_accepted == 0)
-                            Pending Your Acceptance
-                        @elseif($project->employee_accepted == 1)
-                            Ongoing
-                        @endif
-                    </p>
-                </div>
-                <div class="flex gap-2">
-                    <button wire:click="acceptProject({{ $project->project_id }}, 'member')" 
-                            class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl"
-                            @if($hasAcceptedProject) disabled class="bg-gray-500 cursor-not-allowed" @endif>
-                        Accept
-                    </button>
-                    <button wire:click="declineProject({{ $project->project_id }}, 'member')" 
-                            class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl">
-                        Decline
-                    </button>
-                </div>
-            </li>
-        @endforeach
-    </ul>
-@endif
+    {{-- Pending as Member --}}
+    @if(count($pendingAsMember))
+        <h2 class="text-xl text-gray-800 font-semibold mb-2">Pending as Member</h2>
+        <ul class="space-y-2 mb-6">
+            @foreach($pendingAsMember as $project)
+                <li class="bg-gray-100 p-4 rounded-xl border border-gray-300 flex justify-between items-center">
+                    <div>
+                        <h3 class="text-lg text-black font-bold">{{ $project->project_name }}</h3>
+                        <p class="text-gray-700 mb-1">{{ $project->description }}</p>
+                        <p class="text-sm text-gray-500">Start: {{ $project->start_date }} | End: {{ $project->end_date }}</p>
+                        <p class="text-sm text-gray-600 font-semibold">
+                            Status: 
+                            @if($project->employee_accepted == 0)
+                                Pending Your Acceptance
+                            @elseif($project->employee_accepted == 1)
+                                Ongoing
+                            @endif
+                        </p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button wire:click="acceptProject({{ $project->project_id }}, 'member')" 
+                                class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl"
+                                @if($hasAcceptedProject) disabled class="bg-gray-400 cursor-not-allowed" @endif>
+                            Accept
+                        </button>
+                        <button wire:click="declineProject({{ $project->project_id }}, 'member')" 
+                                class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl">
+                            Decline
+                        </button>
+                    </div>
+                </li>
+            @endforeach
+        </ul>
+    @endif
 
     {{-- Accepted Projects --}}
     @if(count($acceptedProjects))
-        <h2 class="text-xl text-green-300 font-semibold mb-2">Accepted Projects</h2>
+        <h2 class="text-xl text-gray-800 font-semibold mb-2">Accepted Projects</h2>
         <ul class="space-y-2">
             @foreach($acceptedProjects as $project)
-                <li class="bg-[#124116] p-4 rounded-xl border border-[#1A5A20]">
-                    <h3 class="text-lg text-[#C8FFD4] font-bold">{{ $project->project_name }}</h3>
-                    <p class="text-gray-300 mb-1">{{ $project->description }}</p>
-                    <p class="text-sm text-gray-400">Start: {{ $project->start_date }} | End: {{ $project->end_date }}</p>
-                    <p class="mt-2 text-green-300 font-semibold">
+                <li class="bg-gray-100 p-4 rounded-xl border border-gray-300">
+                    <h3 class="text-lg text-black font-bold">{{ $project->project_name }}</h3>
+                    <p class="text-gray-700 mb-1">{{ $project->description }}</p>
+                    <p class="text-sm text-gray-500">Start: {{ $project->start_date }} | End: {{ $project->end_date }}</p>
+                    <p class="mt-2 text-gray-800 font-semibold">
                         @if($project->project_manager_id == auth()->user()->employee_id)
                             You are the Manager
                         @else
@@ -184,6 +184,6 @@ public function acceptProject(int $projectId, string $role): void
 
     {{-- No Projects --}}
     @if(count($pendingAsManager) + count($pendingAsMember) + count($acceptedProjects) === 0)
-        <p class="text-gray-400 mt-4">No projects assigned yet.</p>
+        <p class="text-gray-500 mt-4">No projects assigned yet.</p>
     @endif
 </div>

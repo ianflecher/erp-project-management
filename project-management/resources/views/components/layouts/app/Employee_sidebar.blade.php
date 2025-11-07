@@ -15,12 +15,13 @@
         body {
             display: flex;
             height: 100vh;
-            background-color: #0B260F;
+            background-color: #ffffff; /* White background */
+            color: #000000; /* Default text black */
         }
 
         aside {
             width: 16rem;
-            background-color: #124116;
+            background-color: #124116; /* Sidebar stays dark green */
             color: white;
             display: flex;
             flex-direction: column;
@@ -32,14 +33,15 @@
         main {
             flex: 1;
             padding: 2rem;
-            background-color: #0B260F;
+            background-color: #ffffff; /* White background for main */
             box-sizing: border-box;
             height: 100vh;
             overflow-y: auto;
+            color: #000000; /* Black text for main content */
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex">
+<body class="flex">
 
     <!-- Sidebar -->
     <aside class="w-64 bg-[#124116] text-white flex flex-col justify-between p-6 shadow-lg">
@@ -65,15 +67,15 @@
     <!-- Main Content -->
     <main class="flex-1 p-8 relative">
         <!-- Header -->
-        <header class="mb-6 sticky top-0 bg-[#0B260F] z-10 p-2">
-            <h1 class="text-3xl font-bold text-white">
-    Welcome, {{ Auth::user()->name }}
-</h1>
+        <header class="mb-6 sticky top-0 bg-white z-10 p-2">
+            <h1 class="text-3xl font-bold text-black">
+                Welcome, {{ Auth::user()->name }}
+            </h1>
 
-            <p class="text-gray-300 mt-1">Here are your tasks</p>
+            <p class="text-gray-700 mt-1">Here are your tasks</p>
         </header>
 
-        <div class="mt-4">
+        <div class="mt-4 text-black">
             {{ $slot }}
         </div>
     </main>
