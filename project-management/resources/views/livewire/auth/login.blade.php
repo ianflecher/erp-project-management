@@ -23,42 +23,49 @@ new #[Layout('components.layouts.landingapp')] class extends Component
     public bool $remember = false;
 
     public function login(): void
-    {
-        $this->validate();
-        $this->ensureIsNotRateLimited();
+{
+    $this->validate();
+    $this->ensureIsNotRateLimited();
 
-        $user = Auth::getProvider()->retrieveByCredentials([
-            'email' => $this->email,
-            'password' => $this->password
-        ]);
+    $user = Auth::getProvider()->retrieveByCredentials([
+        'email' => $this->email,
+        'password' => $this->password
+    ]);
 
-        if (!$user || !Auth::getProvider()->validateCredentials($user, ['password' => $this->password])) {
-            RateLimiter::hit($this->throttleKey());
-            $this->addError('email', __('auth.failed')); // ✅ Show Wrong email/password error
-
-            return;
-        }
-
-        // Role
-        $role = $user->role ?? DB::table('hr_employees')->where('email', $user->email)->value('role');
-
-        if (!$role) {
-            $this->addError('email', 'Your account does not have a valid role assigned.');
-            return;
-        }
-
-        Auth::login($user, $this->remember);
-        RateLimiter::clear($this->throttleKey());
-        Session::regenerate();
-
-        if ($role === 'Admin') {
-            $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
-        } elseif ($role === 'Manager' || $role === 'Employee') {
-            $this->redirectIntended(default: route('employee', absolute: false), navigate: true);
-        } else {
-            $this->addError('email', 'Your account role is not recognized.');
-        }
+    if (!$user || !Auth::getProvider()->validateCredentials($user, ['password' => $this->password])) {
+        RateLimiter::hit($this->throttleKey());
+        $this->addError('email', __('auth.failed'));
+        return;
     }
+
+    // Get role from hr_employees if not directly on user model
+    $role = $user->role ?? DB::table('hr_employees')->where('email', $user->email)->value('role');
+
+    if (!$role) {
+        $this->addError('email', 'Your account does not have a valid role assigned.');
+        return;
+    }
+
+    Auth::login($user, $this->remember);
+    RateLimiter::clear($this->throttleKey());
+    Session::regenerate();
+
+    // REDIRECT BASED ON ROLE
+    if ($role === 'Admin') {
+        $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
+
+    } elseif ($role === 'Finance') {
+        // Finance redirect
+        $this->redirectIntended(default: route('finance', absolute: false), navigate: true);
+
+    } elseif ($role === 'Manager' || $role === 'Employee') {
+        $this->redirectIntended(default: route('employee', absolute: false), navigate: true);
+
+    } else {
+        $this->addError('email', 'Your account role is not recognized.');
+    }
+}
+
 
     protected function ensureIsNotRateLimited(): void
     {

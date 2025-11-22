@@ -233,9 +233,9 @@ new #[Layout('components.layouts.app')] class extends Component
             @if($isPaused)
                 <!-- Centered Resume Button -->
                 <td colspan="4" style="text-align:center; padding:8px;">
-                    <button wire:click="resumeProject({{ $p->project_id }})" class="phase-btn phase-btn-green">
+                    <!-- <button wire:click="resumeProject({{ $p->project_id }})" class="phase-btn phase-btn-green">
                         Resume
-                    </button>
+                    </button> -->
                 </td>
             @else
                 <!-- Member -->

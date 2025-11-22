@@ -15,6 +15,10 @@ Volt::route('/dashboard', 'dashboard')->name('dashboard');
 Volt::route('/employee', 'Employeedashboard')->name('employee');
 Volt::route('/employeetask', 'projects.employeetask')->name('employeetask');
 
+// finance 
+Volt::route('/finance', 'financedashboard')->name('finance');
+Volt::route('/budget', 'projects.managebudget')->name('managebudget');
+
 
 Volt::route('/projects/home', 'projects.home')->name('projects.home');
 Volt::route('/projects/resources', 'projects.resources')->name('projects.resources');

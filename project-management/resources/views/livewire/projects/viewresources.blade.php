@@ -6,85 +6,24 @@ use Illuminate\Support\Facades\DB;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
-    // Main data
     public array $resources = [];
-    public array $inventories = [];
 
-    // UI state
     public bool $showResourceModal = false;
     public ?int $editing_id = null;
 
-    // Form fields
     public string $resource_name = '';
     public string $type = '';
     public float $unit_cost = 0.00;
-    public float $availability_quantity = 0.00;
     public string $status = '';
-    public ?int $inventory_id = null;
-
-    // Helpers
-    public bool $isLabor = false;
-    public array $filteredInventories = [];
 
     public function mount()
     {
         $this->loadResources();
-        $this->inventories = DB::table('inventories')->orderBy('name')->get()->toArray();
-        $this->filteredInventories = $this->inventories;
-    }
-
-    public function updatedType($value)
-    {
-        $this->type = $value;
-        $this->isLabor = (strtolower($value) === 'labor');
-
-        $this->filteredInventories = array_values(array_filter($this->inventories, function ($inv) use ($value) {
-            $cat = strtolower(trim((string)($inv->category ?? '')));
-            $val = strtolower(trim((string)$value));
-
-            if ($val === 'labor') return $cat === 'labor';
-            if ($val === 'tool') return $cat === 'tool' || str_contains($cat, 'tool');
-            if ($val === 'materials') return $cat !== 'labor' && !str_contains($cat, 'tool');
-
-            return $cat === $val;
-        }));
-
-        if ($this->isLabor) {
-            $this->inventory_id = null;
-            $this->availability_quantity = 0;
-        } else {
-            if ($this->inventory_id) {
-                $inv = collect($this->inventories)->firstWhere('id', $this->inventory_id);
-                $this->availability_quantity = $inv->quantity ?? 0;
-                // Do not overwrite resource_name
-            }
-        }
-    }
-
-    public function updatedInventory_id($value)
-    {
-        if (!$value) {
-            $this->availability_quantity = $this->isLabor ? 0 : $this->availability_quantity;
-            return;
-        }
-
-        $inv = collect($this->inventories)->firstWhere('id', $value);
-
-        if ($inv) {
-            // Only fill resource_name if empty
-            if (!$this->resource_name) {
-                $this->resource_name = $inv->name;
-            }
-
-            $this->availability_quantity = $this->isLabor ? 0 : ($inv->quantity ?? 0);
-        }
     }
 
     public function loadResources()
     {
         $this->resources = DB::table('resources')
-            ->leftJoin('inventories', 'resources.inventory_id', '=', 'inventories.id')
-            ->select('resources.*', 'inventories.name as inventory_name', 'inventories.quantity as inventory_qty')
             ->orderByDesc('resource_id')
             ->get()
             ->toArray();
@@ -106,17 +45,6 @@ new #[Layout('components.layouts.app')] class extends Component
             $this->type = $res->type;
             $this->unit_cost = $res->unit_cost;
             $this->status = $res->status;
-            $this->inventory_id = $res->inventory_id;
-            $this->isLabor = (strtolower($res->type) === 'labor');
-
-            $this->updatedType($this->type);
-
-            if (!$this->isLabor && $this->inventory_id) {
-                $inv = collect($this->inventories)->firstWhere('id', $this->inventory_id);
-                $this->availability_quantity = $inv->quantity ?? 0;
-            } else {
-                $this->availability_quantity = 0;
-            }
 
             $this->showResourceModal = true;
         }
@@ -136,9 +64,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'resource_name' => $this->resource_name,
             'type' => $this->type,
             'unit_cost' => $this->unit_cost,
-            'availability_quantity' => $this->isLabor ? 0 : $this->availability_quantity,
             'status' => $this->status,
-            'inventory_id' => $this->inventory_id,
             'updated_at' => now(),
         ];
 
@@ -165,11 +91,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->resource_name = '';
         $this->type = '';
         $this->unit_cost = 0.00;
-        $this->availability_quantity = 0.00;
         $this->status = '';
-        $this->inventory_id = null;
-        $this->isLabor = false;
-        $this->filteredInventories = $this->inventories;
     }
 }
 ?>
@@ -181,35 +103,24 @@ new #[Layout('components.layouts.app')] class extends Component
         <button class="resources-btn resources-btn-green" wire:click="openAddModal">+ Add Resource</button>
     </div>
 
-@php
-$grouped = collect($resources)->groupBy(function($r){
-    return ucfirst(strtolower($r->type));
-});
-@endphp
-
-<div class="resources-table-wrapper">
-
-    @foreach($grouped as $type => $items)
-        <h3 style="margin-top:20px; color:#2c3e50;">{{ $type }}</h3>
-
-        @if(count($items))
+    <div class="resources-table-wrapper">
+        @if(count($resources))
             <table class="resources-table">
                 <thead>
                     <tr>
                         <th>Resource Name</th>
+                        <th>Type</th>
                         <th>Unit Cost</th>
-                        <th>Available Qty</th>
                         <th>Status</th>
                         <th style="width:160px;">Actions</th>
                     </tr>
                 </thead>
-
                 <tbody>
-                    @foreach($items as $r)
+                    @foreach($resources as $r)
                         <tr>
                             <td>{{ $r->resource_name }}</td>
+                            <td>{{ $r->type }}</td>
                             <td>₱{{ number_format($r->unit_cost, 2) }}</td>
-                            <td>{{ $r->availability_quantity ?? 0 }}</td>
                             <td>
                                 <span class="resources-status {{ strtolower($r->status) }}">
                                     {{ $r->status }}
@@ -224,12 +135,9 @@ $grouped = collect($resources)->groupBy(function($r){
                 </tbody>
             </table>
         @else
-            <div class="resources-empty">No items under {{ $type }}</div>
+            <div class="resources-empty">No resources found</div>
         @endif
-    @endforeach
-
-</div>
-
+    </div>
 
     <!-- Modal -->
     <div class="resources-modal" style="display: {{ $showResourceModal ? 'flex' : 'none' }};">
@@ -242,35 +150,20 @@ $grouped = collect($resources)->groupBy(function($r){
             <form wire:submit.prevent="saveResource" class="resources-form">
                 <div class="resources-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
 
-                    <!-- Resource Name -->
                     <label style="grid-column:1 / span 2;">
                         <span>Resource Name</span>
                         <input type="text" wire:model="resource_name" placeholder="Enter resource name" required>
                     </label>
 
-                    <!-- Resource Type -->
-                    <label style="grid-column:1 / span 2;">
-                        <span>Resource Type</span>
-                        <select wire:model.live="type" required>
+                    <label>
+                        <span>Type</span>
+                        <select wire:model="type" required>
                             <option value="">-- Select Type --</option>
                             <option value="Materials">Materials</option>
                             <option value="Labor">Labor</option>
                             <option value="Tool">Tool</option>
                         </select>
                     </label>
-
-                    <!-- Inventory Dropdown -->
-                    @if($type)
-                        <label style="grid-column:1 / span 2;">
-                            <span>Inventory Items (filtered by type)</span>
-                            <select wire:model.live="inventory_id">
-                                <option value="">-- Select from inventory (optional) --</option>
-                                @foreach($filteredInventories as $inv)
-                                    <option value="{{ $inv->id }}">{{ $inv->name }} (Qty: {{ $inv->quantity }})</option>
-                                @endforeach
-                            </select>
-                        </label>
-                    @endif
 
                     <label>
                         <span>Unit Cost</span>
@@ -296,4 +189,5 @@ $grouped = collect($resources)->groupBy(function($r){
             </form>
         </div>
     </div>
-</div> 
+
+</div>
