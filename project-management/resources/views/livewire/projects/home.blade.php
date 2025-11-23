@@ -23,7 +23,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $description = '';
     public string $start_date = '';
     public string $end_date = '';
-    public string $status = 'Pending';
+    public string $status = 'Paused'; // Changed default to Paused
     public float $budget_total = 0.0;
     public ?int $project_manager_id = null;
 
@@ -62,26 +62,49 @@ new #[Layout('components.layouts.app')] class extends Component
     public function closeProjectModal() { $this->showProjectModal = false; }
 
     public function saveProject()
-    {
-        if (!$this->project_name || !$this->start_date || !$this->end_date) return;
+{
+    if (!$this->project_name || !$this->start_date || !$this->end_date) return;
 
-        DB::table('projects')->insert([
-            'project_name'       => $this->project_name,
-            'description'        => $this->description,
-            'start_date'         => $this->start_date,
-            'end_date'           => $this->end_date,
-            'status'             => 'Pending',       // remain Pending
-            'budget_total'       => $this->budget_total,
-            'project_manager_id' => $this->project_manager_id,
-            'project_member_id'  => null,
-            'employee_accepted'  => 0,               // DO NOT auto accept
-            'created_at'         => now(),
-            'updated_at'         => now(),
-        ]);
+    // Insert project first
+    $projectId = DB::table('projects')->insertGetId([
+        'project_name'       => $this->project_name,
+        'description'        => $this->description,
+        'start_date'         => $this->start_date,
+        'end_date'           => $this->end_date,
+        'status'             => 'Paused',
+        'budget_total'       => $this->budget_total,
+        'project_manager_id' => $this->project_manager_id,
+        'project_member_id'  => null,
+        'employee_accepted'  => 0,
+        'created_at'         => now(),
+        'updated_at'         => now(),
+    ]);
 
-        $this->closeProjectModal();
-        $this->loadProjects();
-    }
+    // Create a main budget record for the project (phase_id = 0 for project-level budget)
+    $budgetId = DB::table('budgets')->insertGetId([
+        'project_id'     => $projectId,
+        'phase_id'       => 0, // Using 0 for project-level budget
+        'task_id'        => null, // No specific task
+        'estimated_cost' => $this->budget_total,
+        'actual_cost'    => 0.00,
+        'variance'       => 0.00,
+        'created_at'     => now(),
+        'updated_at'     => now(),
+    ]);
+
+    // Insert into budget_approvals table with the correct budget_id
+    DB::table('budget_approvals')->insert([
+        'budget_id'    => $budgetId, // Use the actual budget ID we just created
+        'requested_by' => auth()->id(),
+        'status'       => 'pending',
+        'remarks'      => null,
+        'created_at'   => now(),
+        'updated_at'   => now(),
+    ]);
+
+    $this->closeProjectModal();
+    $this->loadProjects();
+}
 
     public function resetProjectFields()
     {
@@ -89,7 +112,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->description = '';
         $this->start_date = '';
         $this->end_date = '';
-        $this->status = 'Pending';
+        $this->status = 'Paused'; // Changed to Paused
         $this->budget_total = 0.0;
         $this->project_manager_id = null;
     }
@@ -107,17 +130,16 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 
     public function resumeProject($projectId)
-{
-    DB::table('projects')
-        ->where('project_id', $projectId)
-        ->update([
-            'status' => 'Pending',  // or whatever default active status you want
-            'updated_at' => now()
-        ]);
+    {
+        DB::table('projects')
+            ->where('project_id', $projectId)
+            ->update([
+                'status' => 'Pending',  // Resume to active status
+                'updated_at' => now()
+            ]);
 
-    $this->loadProjects();
-}
-
+        $this->loadProjects();
+    }
 
     public function closeEditModal() { $this->showEditModal = false; $this->editProject = []; }
 
@@ -158,13 +180,29 @@ new #[Layout('components.layouts.app')] class extends Component
     }
 
     public function deleteProject()
-    {
-        if ($this->projectToDelete) {
-            DB::table('projects')->where('project_id', $this->projectToDelete)->delete();
-            $this->closeDeleteModal();
-            $this->loadProjects();
+{
+    if ($this->projectToDelete) {
+        // First get all budget IDs for this project
+        $budgetIds = DB::table('budgets')
+            ->where('project_id', $this->projectToDelete)
+            ->pluck('budget_id')
+            ->toArray();
+
+        // Delete from budget_approvals
+        if (!empty($budgetIds)) {
+            DB::table('budget_approvals')->whereIn('budget_id', $budgetIds)->delete();
         }
+
+        // Delete from budgets
+        DB::table('budgets')->where('project_id', $this->projectToDelete)->delete();
+
+        // Delete from projects
+        DB::table('projects')->where('project_id', $this->projectToDelete)->delete();
+
+        $this->closeDeleteModal();
+        $this->loadProjects();
     }
+}
 };
 ?>
 

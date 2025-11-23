@@ -19,22 +19,31 @@ new #[Layout('components.layouts.finance')] class extends Component
     }
 
     public function loadPendingBudgets()
-    {
+{
+    try {
         $this->pendingBudgets = DB::table('budget_approvals')
             ->join('budgets', 'budget_approvals.budget_id', '=', 'budgets.budget_id')
-            ->join('project_phases', 'budgets.phase_id', '=', 'project_phases.phase_id')
             ->join('projects', 'budgets.project_id', '=', 'projects.project_id')
             ->join('users', 'budget_approvals.requested_by', '=', 'users.id')
+            ->leftJoin('project_phases', 'budgets.phase_id', '=', 'project_phases.phase_id')
             ->select(
                 'budget_approvals.approval_id',
                 'projects.project_name',
-                'project_phases.phase_name',
+                DB::raw('COALESCE(project_phases.phase_name, "Project Budget") as phase_name'),
                 'budgets.estimated_cost',
                 'users.name as requested_by'
             )
             ->where('budget_approvals.status', 'pending')
-            ->get();
+            ->get()
+            ->toArray();
+            
+        logger('Query successful. Found: ' . count($this->pendingBudgets) . ' records');
+        
+    } catch (\Exception $e) {
+        logger('Error loading pending budgets: ' . $e->getMessage());
+        $this->pendingBudgets = [];
     }
+}
 
     public function approve($approvalId)
 {
