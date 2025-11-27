@@ -176,17 +176,26 @@ new #[Layout('components.layouts.finance')] class extends Component
                     <td>₱{{ number_format($item->estimated_cost, 2) }}</td>
                     <td>{{ $item->requested_by }}</td>
                     <td>
+    <!-- View Button -->
+    <a href="{{ route('budgetdetails', ['id' => $item->approval_id]) }}"
+       class="action-btn"
+       style="background:#0284c7; color:white; margin-right:6px;">
+        View
+    </a>
+
+    <!-- Approve Button -->
     <button class="action-btn btn-approve"
-    onclick="if(confirm('Approve this budget?')) { @this.approve({{ $item->approval_id }}).then(() => location.reload()) }">
-    Approve
-</button>
+        onclick="if(confirm('Approve this budget?')) { @this.approve({{ $item->approval_id }}).then(() => location.reload()) }">
+        Approve
+    </button>
 
-<button class="action-btn btn-decline"
-    onclick="if(confirm('Decline this budget?')) { @this.decline({{ $item->approval_id }}).then(() => location.reload()) }">
-    Decline
-</button>
-
+    <!-- Decline Button -->
+    <button class="action-btn btn-decline"
+        onclick="if(confirm('Decline this budget?')) { @this.decline({{ $item->approval_id }}).then(() => location.reload()) }">
+        Decline
+    </button>
 </td>
+
 
 
 

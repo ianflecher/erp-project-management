@@ -12,21 +12,10 @@ new #[Layout('components.layouts.employeeapp')] class extends Component
     public array $pendingAsManager = [];
     public array $pendingAsMember = [];
     public array $acceptedProjects = [];
-    public bool $hasAcceptedProject = false;
 
     public function mount(): void
     {
         $userEmployeeId = Auth::user()->employee_id;
-
-        // Check if user has already accepted a project
-        $this->hasAcceptedProject = DB::table('projects')
-            ->where(function($q) use ($userEmployeeId) {
-                $q->where('project_manager_id', $userEmployeeId)
-                  ->where('manager_accepted', 1)
-                  ->orWhereRaw("FIND_IN_SET(?, project_member_id)", [$userEmployeeId])
-                  ->where('employee_accepted', 1);
-            })
-            ->exists();
 
         // Pending as Manager
         $this->pendingAsManager = DB::table('projects')
@@ -44,56 +33,103 @@ new #[Layout('components.layouts.employeeapp')] class extends Component
             ->get()
             ->toArray();
 
-        // Accepted Projects
+        // Accepted Projects (both as manager and member)
         $this->acceptedProjects = DB::table('projects')
             ->where(function($q) use ($userEmployeeId) {
                 $q->where('project_manager_id', $userEmployeeId)
                   ->where('manager_accepted', 1)
-                  ->orWhereRaw("FIND_IN_SET(?, project_member_id)", [$userEmployeeId])
-                  ->where('employee_accepted', 1);
+                  ->orWhere(function($q2) use ($userEmployeeId) {
+                      $q2->whereRaw("FIND_IN_SET(?, project_member_id)", [$userEmployeeId])
+                         ->where('employee_accepted', 1);
+                  });
             })
             ->orderBy('start_date', 'desc')
             ->get()
             ->toArray();
     }
 
-    // Accept project as Manager or Member
-public function acceptProject(int $projectId, string $role): void
-{
-    if ($this->hasAcceptedProject) return; // Prevent multiple acceptance
-
-    $field = $role === 'manager' ? 'manager_accepted' : 'employee_accepted';
-
-    $updateData = [
-        $field => 1,
-        'accepted_at' => now()
-    ];
-
-    // Only update project status to 'Ongoing' if a member accepts
-    if ($role === 'member') {
-        $updateData['status'] = 'Ongoing';
+    // Check if user has already accepted a specific project
+    private function hasAcceptedProject(int $projectId, string $role): bool
+    {
+        $userEmployeeId = Auth::user()->employee_id;
+        
+        if ($role === 'manager') {
+            return DB::table('projects')
+                ->where('project_id', $projectId)
+                ->where('project_manager_id', $userEmployeeId)
+                ->where('manager_accepted', 1)
+                ->exists();
+        } else {
+            return DB::table('projects')
+                ->where('project_id', $projectId)
+                ->whereRaw("FIND_IN_SET(?, project_member_id)", [$userEmployeeId])
+                ->where('employee_accepted', 1)
+                ->exists();
+        }
     }
 
-    DB::table('projects')->where('project_id', $projectId)->update($updateData);
+    // Accept project as Manager or Member
+    public function acceptProject(int $projectId, string $role): void
+    {
+        // Check if already accepted this specific project
+        if ($this->hasAcceptedProject($projectId, $role)) {
+            return;
+        }
 
-    $this->mount(); // Refresh data
-}
+        $userEmployeeId = Auth::user()->employee_id;
+        $field = $role === 'manager' ? 'manager_accepted' : 'employee_accepted';
 
+        $updateData = [
+            $field => 1,
+            'updated_at' => now()
+        ];
+
+        // Only update project status to 'Ongoing' if a member accepts
+        if ($role === 'member') {
+            $updateData['status'] = 'Ongoing';
+        }
+
+        // Update the project
+        DB::table('projects')
+            ->where('project_id', $projectId)
+            ->where(function($q) use ($userEmployeeId, $role) {
+                if ($role === 'manager') {
+                    $q->where('project_manager_id', $userEmployeeId);
+                } else {
+                    $q->whereRaw("FIND_IN_SET(?, project_member_id)", [$userEmployeeId]);
+                }
+            })
+            ->update($updateData);
+
+        // Refresh the data
+        $this->mount();
+    }
 
     // Decline project as Manager or Member
     public function declineProject(int $projectId, string $role): void
     {
+        $userEmployeeId = Auth::user()->employee_id;
         $field = $role === 'manager' ? 'manager_accepted' : 'employee_accepted';
 
-        DB::table('projects')->where('project_id', $projectId)->update([
-            $field => 0,
-            'accepted_at' => null
-        ]);
+        DB::table('projects')
+            ->where('project_id', $projectId)
+            ->where(function($q) use ($userEmployeeId, $role) {
+                if ($role === 'manager') {
+                    $q->where('project_manager_id', $userEmployeeId);
+                } else {
+                    $q->whereRaw("FIND_IN_SET(?, project_member_id)", [$userEmployeeId]);
+                }
+            })
+            ->update([
+                $field => 0,
+                'updated_at' => now()
+            ]);
 
-        $this->mount(); // Refresh data
+        // Refresh the data
+        $this->mount();
     }
 };
-?>  
+?>
 
 <div class="min-h-screen p-6 bg-white">
     <h1 class="text-3xl font-bold text-black mb-6">My Projects</h1>
@@ -112,12 +148,11 @@ public function acceptProject(int $projectId, string $role): void
                     </div>
                     <div class="flex gap-2">
                         <button wire:click="acceptProject({{ $project->project_id }}, 'manager')" 
-                                class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl"
-                                @if($hasAcceptedProject) disabled class="bg-gray-400 cursor-not-allowed" @endif>
+                                class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl transition-colors">
                             Accept
                         </button>
                         <button wire:click="declineProject({{ $project->project_id }}, 'manager')" 
-                                class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl">
+                                class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl transition-colors">
                             Decline
                         </button>
                     </div>
@@ -137,22 +172,16 @@ public function acceptProject(int $projectId, string $role): void
                         <p class="text-gray-700 mb-1">{{ $project->description }}</p>
                         <p class="text-sm text-gray-500">Start: {{ $project->start_date }} | End: {{ $project->end_date }}</p>
                         <p class="text-sm text-gray-600 font-semibold">
-                            Status: 
-                            @if($project->employee_accepted == 0)
-                                Pending Your Acceptance
-                            @elseif($project->employee_accepted == 1)
-                                Ongoing
-                            @endif
+                            Status: Pending Your Acceptance
                         </p>
                     </div>
                     <div class="flex gap-2">
                         <button wire:click="acceptProject({{ $project->project_id }}, 'member')" 
-                                class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl"
-                                @if($hasAcceptedProject) disabled class="bg-gray-400 cursor-not-allowed" @endif>
+                                class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl transition-colors">
                             Accept
                         </button>
                         <button wire:click="declineProject({{ $project->project_id }}, 'member')" 
-                                class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl">
+                                class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl transition-colors">
                             Decline
                         </button>
                     </div>
@@ -170,6 +199,7 @@ public function acceptProject(int $projectId, string $role): void
                     <h3 class="text-lg text-black font-bold">{{ $project->project_name }}</h3>
                     <p class="text-gray-700 mb-1">{{ $project->description }}</p>
                     <p class="text-sm text-gray-500">Start: {{ $project->start_date }} | End: {{ $project->end_date }}</p>
+                    <p class="text-sm text-gray-600 font-semibold">Status: {{ $project->status }}</p>
                     <p class="mt-2 text-gray-800 font-semibold">
                         @if($project->project_manager_id == auth()->user()->employee_id)
                             You are the Manager

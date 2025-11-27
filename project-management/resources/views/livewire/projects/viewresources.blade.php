@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 new #[Layout('components.layouts.app')] class extends Component
 {
     public array $resources = [];
+    public array $resourcesByType = [];
 
     public bool $showResourceModal = false;
     public ?int $editing_id = null;
@@ -27,6 +28,13 @@ new #[Layout('components.layouts.app')] class extends Component
             ->orderByDesc('resource_id')
             ->get()
             ->toArray();
+
+        // Group resources by type for display
+        $this->resourcesByType = [
+            'Labor' => array_filter($this->resources, fn($r) => $r->type === 'Labor'),
+            'Materials' => array_filter($this->resources, fn($r) => $r->type === 'Materials'),
+            'Overhead' => array_filter($this->resources, fn($r) => $r->type === 'Overhead'),
+        ];
     }
 
     public function openAddModal()
@@ -105,35 +113,42 @@ new #[Layout('components.layouts.app')] class extends Component
 
     <div class="resources-table-wrapper">
         @if(count($resources))
-            <table class="resources-table">
-                <thead>
-                    <tr>
-                        <th>Resource Name</th>
-                        <th>Type</th>
-                        <th>Unit Cost</th>
-                        <th>Status</th>
-                        <th style="width:160px;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($resources as $r)
-                        <tr>
-                            <td>{{ $r->resource_name }}</td>
-                            <td>{{ $r->type }}</td>
-                            <td>₱{{ number_format($r->unit_cost, 2) }}</td>
-                            <td>
-                                <span class="resources-status {{ strtolower($r->status) }}">
-                                    {{ $r->status }}
-                                </span>
-                            </td>
-                            <td class="resources-actions">
-                                <button wire:click="openEditModal({{ $r->resource_id }})" class="resources-btn resources-btn-yellow">Edit</button>
-                                <button wire:click="deleteResource({{ $r->resource_id }})" class="resources-btn resources-btn-red">Delete</button>
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
+            @foreach(['Labor', 'Materials', 'Overhead'] as $type)
+                @if(count($resourcesByType[$type] ?? []))
+                    <div class="resources-type-section" style="margin-bottom: 2rem;">
+                        <h3 style="color: #2d3748; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                            {{ $type }} Resources
+                        </h3>
+                        <table class="resources-table">
+                            <thead>
+                                <tr>
+                                    <th>Resource Name</th>
+                                    <th>Unit Cost</th>
+                                    <th>Status</th>
+                                    <th style="width:160px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($resourcesByType[$type] as $r)
+                                    <tr>
+                                        <td>{{ $r->resource_name }}</td>
+                                        <td>₱{{ number_format($r->unit_cost, 2) }}</td>
+                                        <td>
+                                            <span class="resources-status {{ strtolower($r->status) }}">
+                                                {{ $r->status }}
+                                            </span>
+                                        </td>
+                                        <td class="resources-actions">
+                                            <button wire:click="openEditModal({{ $r->resource_id }})" class="resources-btn resources-btn-yellow">Edit</button>
+                                            <button wire:click="deleteResource({{ $r->resource_id }})" class="resources-btn resources-btn-red">Delete</button>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            @endforeach
         @else
             <div class="resources-empty">No resources found</div>
         @endif
@@ -150,24 +165,24 @@ new #[Layout('components.layouts.app')] class extends Component
             <form wire:submit.prevent="saveResource" class="resources-form">
                 <div class="resources-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
 
-                    <label style="grid-column:1 / span 2;">
-                        <span>Resource Name</span>
-                        <input type="text" wire:model="resource_name" placeholder="Enter resource name" required>
-                    </label>
-
                     <label>
                         <span>Type</span>
                         <select wire:model="type" required>
                             <option value="">-- Select Type --</option>
-                            <option value="Materials">Materials</option>
                             <option value="Labor">Labor</option>
-                            <option value="Tool">Tool</option>
+                            <option value="Materials">Materials</option>
+                            <option value="Overhead">Overhead</option>
                         </select>
                     </label>
 
                     <label>
                         <span>Unit Cost</span>
                         <input type="number" step="0.01" wire:model="unit_cost" required>
+                    </label>
+
+                    <label style="grid-column:1 / span 2;">
+                        <span>Resource Name</span>
+                        <input type="text" wire:model="resource_name" placeholder="Enter resource name" required>
                     </label>
 
                     <label style="grid-column:1 / span 2;">

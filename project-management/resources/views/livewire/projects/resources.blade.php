@@ -601,10 +601,14 @@ public function assignMember()
         $task = DB::table('tasks')->where('task_id', $this->currentTaskId)->first();
 
         if ($task) {
+            // Get current assigned IDs as array (they should be numbers)
             $assignedIds = $task->assigned_to ? explode(',', $task->assigned_to) : [];
+            
+            // Convert all values to integers to ensure we're working with numbers
+            $assignedIds = array_map('intval', $assignedIds);
 
-            if (!in_array($this->selectedEmployeeId, $assignedIds)) {
-                $assignedIds[] = $this->selectedEmployeeId;
+            if (!in_array((int)$this->selectedEmployeeId, $assignedIds)) {
+                $assignedIds[] = (int)$this->selectedEmployeeId;
 
                 DB::table('tasks')
                     ->where('task_id', $this->currentTaskId)
@@ -618,7 +622,6 @@ public function assignMember()
         $this->currentTaskId = null;
     }
 }
-
 
     public function getActualCostForPhase($phaseId)
 {
