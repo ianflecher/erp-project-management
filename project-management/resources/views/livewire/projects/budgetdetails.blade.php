@@ -42,7 +42,7 @@ new #[Layout('components.layouts.app')] class extends Component
         ->where('approval_id', $this->approvalId)
         ->update([
             'remarks' => $this->revisionRemarks,
-            'status' => 'revision',
+            'status' => 'Pending',
             'reviewed_by' => auth()->id(),
             'updated_at' => now(),
         ]);

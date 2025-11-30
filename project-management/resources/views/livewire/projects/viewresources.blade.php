@@ -16,6 +16,7 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $type = '';
     public float $unit_cost = 0.00;
     public string $status = '';
+    public int $quantity = 1;
 
     public function mount()
     {
@@ -69,12 +70,13 @@ new #[Layout('components.layouts.app')] class extends Component
         if (!$this->resource_name || !$this->type || !$this->status) return;
 
         $data = [
-            'resource_name' => $this->resource_name,
-            'type' => $this->type,
-            'unit_cost' => $this->unit_cost,
-            'status' => $this->status,
-            'updated_at' => now(),
-        ];
+    'resource_name' => $this->resource_name,
+    'type' => $this->type,
+    'unit_cost' => $this->unit_cost,
+    'availability_quantity' => $this->quantity,
+    'status' => $this->status,
+    'updated_at' => now(),
+];
 
         if ($this->editing_id) {
             DB::table('resources')->where('resource_id', $this->editing_id)->update($data);
@@ -100,6 +102,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->type = '';
         $this->unit_cost = 0.00;
         $this->status = '';
+        $this->quantity = 1;
     }
 }
 ?>
@@ -125,6 +128,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <th>Resource Name</th>
                                     <th>Unit Cost</th>
                                     <th>Status</th>
+                                    <th>Quantity</th>
                                     <th style="width:160px;">Actions</th>
                                 </tr>
                             </thead>
@@ -138,6 +142,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                                 {{ $r->status }}
                                             </span>
                                         </td>
+                                        <td>{{ $r->availability_quantity }}</td>
                                         <td class="resources-actions">
                                             <button wire:click="openEditModal({{ $r->resource_id }})" class="resources-btn resources-btn-yellow">Edit</button>
                                             <button wire:click="deleteResource({{ $r->resource_id }})" class="resources-btn resources-btn-red">Delete</button>
@@ -179,6 +184,11 @@ new #[Layout('components.layouts.app')] class extends Component
                         <span>Unit Cost</span>
                         <input type="number" step="0.01" wire:model="unit_cost" required>
                     </label>
+
+                    <label>
+    <span>Quantity</span>
+    <input type="number" min="1" wire:model="quantity" required>
+</label>
 
                     <label style="grid-column:1 / span 2;">
                         <span>Resource Name</span>
